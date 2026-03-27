@@ -6,7 +6,7 @@
   "type": "commonjs",
   "main": "src/index.js",
   "scripts": {
-    "test": "node tests/smoke.test.js"
+    "test": "node tests/smoke.test.js && python3 tests/search_orchestrator_regression_test.py"
   },
   "openclaw": {
     "extensions": [

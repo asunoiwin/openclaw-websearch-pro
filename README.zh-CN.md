@@ -20,6 +20,8 @@
 - 首轮结果差时，会做一轮再搜索
 - 在任务开始前，主动提示 agent 使用统一搜索工具，而不是等用户显式说“去搜索”
 - 插件自带浏览器桥和网页蒸馏脚本，不依赖 `workspace/scripts` 才能工作
+- 内置站点专属结果页提取器
+- 当目标页被挑战、拦截或质量过低时，会自动做域名限定再搜索并合成结构化结果
 
 ## 插件内脚本
 
@@ -169,6 +171,41 @@
 - `sections`
 - `links`
 - `quality`
+
+常见的 `fetch_mode` 现在包括：
+
+- `github_raw`
+- `reddit_json`
+- `search_results`
+- `domain_search_fallback`
+- `meta_search_fallback`
+- `reader`
+- `direct`
+
+## 站点专属提取
+
+这条搜索器不会把所有网页都当成同一种页面处理。
+
+当前已经有专属路径的包括：
+
+- GitHub 仓库页和 blob 页
+  - 优先抓原始 README / 原始文件内容
+- Reddit 讨论页
+  - 优先尝试 `.json` 结构化提取
+- 搜索结果页
+  - Google
+  - Baidu
+  - YouTube
+  - PyPI
+  - Hugging Face
+  - Kubernetes Docs search
+
+如果目标页本身被验证页、挑战页或半加载页面挡住，搜索器会自动退到：
+
+- 同 query 的域名限定再搜索
+- 再把搜索结果整理成结构化证据
+
+这样即使拿不到原页面 DOM，也不会直接停在低质量结果。
 
 ## 设计原则
 

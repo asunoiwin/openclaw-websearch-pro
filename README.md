@@ -20,6 +20,8 @@ Unified search orchestration for OpenClaw. This plugin consolidates multi-engine
 - Runs one refinement loop when first-pass quality is weak
 - Nudges agents to use search proactively on external-information tasks
 - Bundles browser-bridge and content-distill helpers inside the plugin for portability
+- Includes site-specific extractors for high-value result pages
+- Falls back to domain-scoped re-search when the target page is blocked, challenged, or unusable
 
 ## Bundled scripts
 
@@ -164,6 +166,36 @@ The `extraction` object includes:
 - `sections`
 - `links`
 - `quality`
+
+Common `fetch_mode` values now include:
+
+- `github_raw`
+- `reddit_json`
+- `search_results`
+- `domain_search_fallback`
+- `meta_search_fallback`
+- `reader`
+- `direct`
+
+## Site-specific extraction
+
+The orchestrator does not treat all pages the same.
+
+Current specialized paths include:
+
+- GitHub repository and blob URLs
+  - fetches raw README/blob content directly when possible
+- Reddit discussion URLs
+  - tries structured `.json` extraction first
+- Search result pages
+  - Google
+  - Baidu
+  - YouTube
+  - PyPI
+  - Hugging Face
+  - Kubernetes Docs search
+
+When a target page is blocked or degraded, the orchestrator can synthesize a usable extraction by re-searching the same query with a domain restriction and converting the best results into structured evidence.
 
 ## Design notes
 

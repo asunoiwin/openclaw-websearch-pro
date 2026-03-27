@@ -44,6 +44,13 @@ LOW_SIGNAL_PATTERNS = [
     r"forbidden",
     r"returned error 403",
 ]
+SEARCH_PAGE_HINTS = [
+    "search",
+    "搜索",
+    "results",
+    "结果",
+    "client challenge",
+]
 SITE_QUERY_SUFFIXES = {
     "github": ["README", "repo", "install", "usage"],
     "clawhub": ["skill", "plugin", "install"],
@@ -189,6 +196,166 @@ def extract_reddit_special(url: str, query: str) -> Dict | None:
         "links": [],
         "quality": "high" if summary else "medium",
         "comments": comments[:3],
+    }
+
+
+def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    path = parsed.path.lower()
+    lowered = raw.lower()
+    looks_like_search = any(hint in clean(raw[:4000]).lower() for hint in SEARCH_PAGE_HINTS)
+    if not looks_like_search and not any(token in path for token in ("/search", "/s", "/results")):
+        return None
+
+    def mk(title: str, items: List[Tuple[str, str, str]], mode: str) -> Dict | None:
+        cleaned = []
+        seen = set()
+        for item_title, item_url, item_snippet in items:
+            item_title = clean(re.sub(r"<[^>]+>", " ", item_title))
+            item_url = clean(html.unescape(item_url))
+            item_snippet = clean(re.sub(r"<[^>]+>", " ", item_snippet))
+            if not item_title or not item_url:
+                continue
+            key = item_url.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned.append((item_title, item_url, item_snippet))
+            if len(cleaned) >= 5:
+                break
+        if len(cleaned) < 2:
+            return None
+        summary = []
+        links = []
+        for item_title, item_url, item_snippet in cleaned:
+            line = item_title
+            if item_snippet:
+                line = f"{item_title}: {item_snippet[:180]}"
+            summary.append(line)
+            links.append({"text": item_title, "href": item_url})
+        quality = "high" if len(cleaned) >= 4 else "medium"
+        return {
+            "url": url,
+            "fetch_mode": mode,
+            "title": clean(title),
+            "summary": summary[:5],
+            "sections": [{"level": "results", "text": item[0]} for item in cleaned[:5]],
+            "links": links[:10],
+            "quality": quality,
+        }
+
+    if domain in {"www.google.com", "google.com"}:
+        items = []
+        for match in re.finditer(r'<a href="/url\\?q=(?P<href>https?://[^"&]+)[^"]*".*?<h3.*?>(?P<title>.*?)</h3>(?P<rest>.*?)(?=<a href="/url\\?q=|$)', raw, re.S):
+            snippet_match = re.search(r'<span[^>]*>(?P<snippet>.*?)</span>', match.group("rest"), re.S)
+            items.append((match.group("title"), match.group("href"), snippet_match.group("snippet") if snippet_match else ""))
+        return mk("Google Search", items, "search_results")
+
+    if domain in {"www.baidu.com", "baidu.com"}:
+        items = []
+        for match in re.finditer(r'<h3[^>]*class="t[^"]*"[^>]*>.*?<a[^>]*href="(?P<href>[^"]+)"[^>]*>(?P<title>.*?)</a>(?P<rest>.*?)(?=<h3[^>]*class="t|$)', raw, re.S):
+            snippet_match = re.search(r'<div[^>]*class="c-abstract[^"]*"[^>]*>(?P<snippet>.*?)</div>', match.group("rest"), re.S)
+            items.append((match.group("title"), match.group("href"), snippet_match.group("snippet") if snippet_match else ""))
+        return mk("Baidu Search", items, "search_results")
+
+    if domain.endswith("youtube.com"):
+        items = []
+        for match in re.finditer(r'"videoRenderer".*?"videoId":"(?P<id>[^"]+)".*?"title":\{"runs":\[\{"text":"(?P<title>[^"]+)"', raw, re.S):
+            items.append((match.group("title"), f"https://www.youtube.com/watch?v={match.group('id')}", ""))
+        return mk("YouTube Search", items, "search_results")
+
+    if domain.endswith("pypi.org"):
+        items = []
+        for match in re.finditer(r'<a[^>]*class="package-snippet"[^>]*href="(?P<href>[^"]+)"[^>]*>.*?<span[^>]*class="package-snippet__name">(?P<title>.*?)</span>(?P<rest>.*?)(?=</a>)', raw, re.S):
+            snippet_match = re.search(r'package-snippet__description">(?P<snippet>.*?)</p>', match.group("rest"), re.S)
+            items.append((match.group("title"), urllib.parse.urljoin("https://pypi.org", match.group("href")), snippet_match.group("snippet") if snippet_match else ""))
+        return mk("PyPI Search", items, "search_results")
+
+    if domain.endswith("huggingface.co"):
+        items = []
+        for match in re.finditer(r'<a[^>]*href="(?P<href>/(?:models|datasets|spaces)/[^"]+)"[^>]*>(?P<title>.*?)</a>', raw, re.S):
+            items.append((match.group("title"), urllib.parse.urljoin("https://huggingface.co", match.group("href")), ""))
+        return mk("Hugging Face Search", items, "search_results")
+
+    if "kubernetes.io" in domain and any(token in path for token in ("/search", "/docs/search")):
+        items = []
+        for match in re.finditer(r'<a[^>]*href="(?P<href>/docs/[^"]+)"[^>]*>(?P<title>.*?)</a>', raw, re.S):
+            items.append((match.group("title"), urllib.parse.urljoin("https://kubernetes.io", match.group("href")), ""))
+        return mk("Kubernetes Docs Search", items, "search_results")
+
+    return None
+
+
+def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    if not domain or not query:
+        return None
+    if domain in {"www.google.com", "google.com", "www.baidu.com", "baidu.com"}:
+        collected: List[SearchResult] = []
+        seen = set()
+        for engine in ("bing", "ddg"):
+            for item in search_engine(engine, query, "general"):
+                key = (item.url or item.title).strip().lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                item.score = score_result(item, query)
+                collected.append(item)
+        collected.sort(key=lambda item: item.score, reverse=True)
+        useful = collected[:5]
+        if len(useful) < 2:
+            return None
+        return {
+            "url": url,
+            "fetch_mode": "meta_search_fallback",
+            "title": "Search results proxy",
+            "summary": [
+                f"{item.title}: {item.snippet[:180]}".strip(": ")
+                if item.snippet else item.title
+                for item in useful
+            ],
+            "sections": [{"level": "results", "text": item.title} for item in useful],
+            "links": [{"text": item.title, "href": item.url} for item in useful],
+            "quality": "medium",
+            "source_query": query,
+        }
+    variant = f"{query} site:{domain}"
+    collected: List[SearchResult] = []
+    seen = set()
+    for engine in ("bing", "ddg"):
+        for item in search_engine(engine, variant, domain):
+            key = (item.url or item.title).strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            item.score = score_result(item, query)
+            collected.append(item)
+    collected.sort(key=lambda item: item.score, reverse=True)
+    useful = []
+    for item in collected:
+        item_domain = urllib.parse.urlparse(item.url).netloc.lower()
+        if domain not in item_domain:
+            continue
+        useful.append(item)
+        if len(useful) >= 5:
+            break
+    if len(useful) < 2:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "domain_search_fallback",
+        "title": clean(domain),
+        "summary": [
+            f"{item.title}: {item.snippet[:180]}".strip(": ")
+            if item.snippet else item.title
+            for item in useful
+        ],
+        "sections": [{"level": "results", "text": item.title} for item in useful],
+        "links": [{"text": item.title, "href": item.url} for item in useful],
+        "quality": "medium",
+        "source_query": variant,
     }
 
 
@@ -456,6 +623,13 @@ def deep_extract(url: str, query: str) -> Dict:
     raw, mode = fetch_with_reader_fallback(url)
     if not raw:
         return {"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}
+    search_special = extract_search_page_special(url, raw, query)
+    if search_special:
+        return search_special
+    if is_low_signal_text(raw):
+        fallback = extract_domain_search_fallback(url, query)
+        if fallback:
+            return fallback
     if "<html" not in raw.lower():
         reader_title, normalized = normalize_reader_text(raw[:MAX_TEXT]) if mode == "reader" else ("", clean(raw[:MAX_TEXT]))
         summary = summarize_text(normalized, query)
@@ -466,6 +640,10 @@ def deep_extract(url: str, query: str) -> Dict:
                 reader_title = distilled.get("title") or reader_title
             except Exception:
                 pass
+        if is_low_signal_text(normalized):
+            fallback = extract_domain_search_fallback(url, query)
+            if fallback:
+                return fallback
         return {
             "url": url,
             "fetch_mode": mode,
@@ -493,6 +671,10 @@ def deep_extract(url: str, query: str) -> Dict:
             quality = "medium" if summary else quality
         except Exception:
             pass
+    if is_low_signal_text(summary_source) or not summary:
+        fallback = extract_domain_search_fallback(url, query)
+        if fallback:
+            return fallback
     quality = effective_quality(summary, summary_source, mode, quality)
     return {
         "url": url,

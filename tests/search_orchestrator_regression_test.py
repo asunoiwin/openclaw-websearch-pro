@@ -68,8 +68,51 @@ def test_domain_search_fallback_for_blocked_page():
     assert len(result["links"]) >= 2
 
 
+def test_root_domain_relaxation_for_subdomain_sites():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult("Weibo topic", "https://weibo.com/topic/openclaw", "Discussion", engine, variant, site_focus),
+            module.SearchResult("Weibo user", "https://www.weibo.com/u/123", "Profile", engine, variant, site_focus),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback("https://s.weibo.com/weibo/openclaw", "openclaw")
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] == "domain_search_fallback"
+    assert len(result["links"]) >= 2
+
+
+def test_meta_search_fallback_for_search_engines():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult("OpenClaw GitHub", "https://github.com/openclaw/openclaw", "Repo", engine, variant, site_focus),
+            module.SearchResult("OpenClaw Docs", "https://docs.openclaw.ai", "Docs", engine, variant, site_focus),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback("https://www.google.com/search?q=openclaw", "openclaw")
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] == "meta_search_fallback"
+    assert result["quality"] == "medium"
+    assert len(result["links"]) >= 2
+
+
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
     test_youtube_search_page_extractor()
     test_domain_search_fallback_for_blocked_page()
+    test_root_domain_relaxation_for_subdomain_sites()
+    test_meta_search_fallback_for_search_engines()
     print("search orchestrator regression tests passed")

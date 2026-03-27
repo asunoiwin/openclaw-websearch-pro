@@ -78,6 +78,16 @@ def clean(text: str) -> str:
     return text
 
 
+def root_domain(value: str) -> str:
+    host = clean(value).lower()
+    if not host:
+        return ""
+    parts = [part for part in host.split(".") if part]
+    if len(parts) <= 2:
+        return host
+    return ".".join(parts[-2:])
+
+
 def http_get(url: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -290,6 +300,7 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
 def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower()
+    root = root_domain(domain)
     if not domain or not query:
         return None
     if domain in {"www.google.com", "google.com", "www.baidu.com", "baidu.com"}:
@@ -321,7 +332,7 @@ def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
             "quality": "medium",
             "source_query": query,
         }
-    variant = f"{query} site:{domain}"
+    variant = f"{query} site:{root or domain}"
     collected: List[SearchResult] = []
     seen = set()
     for engine in ("bing", "ddg"):
@@ -336,7 +347,11 @@ def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
     useful = []
     for item in collected:
         item_domain = urllib.parse.urlparse(item.url).netloc.lower()
-        if domain not in item_domain:
+        item_root = root_domain(item_domain)
+        if root:
+            if item_root != root:
+                continue
+        elif domain not in item_domain:
             continue
         useful.append(item)
         if len(useful) >= 5:

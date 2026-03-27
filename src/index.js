@@ -170,6 +170,12 @@ const plugin = {
         required: ['query']
       },
       execute: async (args = {}) => {
+        if (!String(args.query || '').trim()) {
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ error: 'empty_query' }, null, 2) }],
+            details: { success: false, error: 'empty_query' },
+          };
+        }
         const cfg = api.pluginConfig || {};
         const payload = {
           query: String(args.query || ''),

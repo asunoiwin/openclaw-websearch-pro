@@ -443,6 +443,17 @@ def coverage_signals(extractions: List[Dict]) -> Dict[str, int]:
 
 def research(payload: Dict) -> Dict:
     query = clean(payload.get("query", ""))
+    if not query:
+        return {
+            "query": "",
+            "intent": payload.get("intent", "auto"),
+            "quality": "low",
+            "error": "empty_query",
+            "rounds": [],
+            "results": [],
+            "coverage": {"high": 0, "medium": 0, "useful": 0},
+            "followup_queries": [],
+        }
     intent = payload.get("intent", "auto")
     max_results = int(payload.get("max_results", 8))
     max_deep_results = int(payload.get("max_deep_results", 5))

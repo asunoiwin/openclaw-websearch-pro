@@ -3,42 +3,56 @@
     "id": "search_results_extraction",
     "name": "Search Result Page Extraction",
     "when": "目标页面本身是搜索结果页，或正文无法直接作为答案使用",
-    "action": "直接抽取结果列表、标题、链接和片段，输出结构化证据"
+    "action": "直接抽取结果列表、标题、链接和片段，输出结构化证据",
+    "failurePatterns": ["搜索结果壳页", "只看到站点导航", "搜索页标题正确但正文为空"]
   },
   {
     "id": "reader_then_distill",
     "name": "Reader Then Distill",
     "when": "DOM 难取、JS 很重、正文噪声高",
-    "action": "先尝试 reader，再用 distill 提取摘要、章节和链接"
+    "action": "先尝试 reader，再用 distill 提取摘要、章节和链接",
+    "failurePatterns": ["JS 重页面", "正文需要 reader 才能展开", "原始 HTML 噪声过大"]
   },
   {
     "id": "quality_gating",
     "name": "Quality Gating",
     "when": "页面返回验证码、挑战页、半加载内容、短内容或明显低信号文本",
-    "action": "直接降级为 low，不把该页当成高质量命中"
+    "action": "直接降级为 low，不把该页当成高质量命中",
+    "failurePatterns": ["Client Challenge", "安全验证", "Just a moment", "Please enable JavaScript", "403/Forbidden"]
   },
   {
     "id": "domain_search_fallback",
     "name": "Domain Scoped Re-search",
     "when": "目标页不可用、正文无效或提取结果过差",
-    "action": "对同一查询做 site:domain 限定重搜，再把结果整理成结构化证据"
+    "action": "对同一查询做 site:domain 限定重搜，再把结果整理成结构化证据",
+    "failurePatterns": ["平台页可打开但正文无效", "站内搜索结果页不可解析", "原页只有泛站点描述"]
   },
   {
     "id": "root_domain_relaxation",
     "name": "Root Domain Relaxation",
     "when": "站点使用搜索子域或内容分发子域，导致精确域名过滤过严",
-    "action": "将域名匹配放宽到根域名级别，再筛结果"
+    "action": "将域名匹配放宽到根域名级别，再筛结果",
+    "failurePatterns": ["s.weibo.com", "search 子域", "m/mobile 子域"]
   },
   {
     "id": "meta_search_proxy",
     "name": "Meta Search Proxy",
     "when": "目标本身是 Google/Baidu 等搜索引擎结果页且原页不可用",
-    "action": "改用 Bing/DDG 对同 query 代理重搜，生成可用结果"
+    "action": "改用 Bing/DDG 对同 query 代理重搜，生成可用结果",
+    "failurePatterns": ["Google 搜索页受限", "Baidu 安全验证", "搜索引擎结果页不可直接读取"]
   },
   {
     "id": "followup_refinement",
     "name": "Follow-up Query Refinement",
     "when": "首轮搜索质量差或覆盖不足",
-    "action": "基于首轮命中标题、域名和实体生成 follow-up queries 再搜"
+    "action": "基于首轮命中标题、域名和实体生成 follow-up queries 再搜",
+    "failurePatterns": ["首轮只有弱命中", "结果数量太少", "结果偏题但可提取实体"]
+  },
+  {
+    "id": "search_shell_fallback",
+    "name": "Search Shell Fallback",
+    "when": "页面标题像搜索结果页，但正文只剩一两条站点介绍或导航文本",
+    "action": "不要相信正文摘要，直接切到域名回退或结果页提取",
+    "failurePatterns": ["HuggingFace models search 壳页", "Kubernetes search 壳页", "Bilibili/淘宝类泛站点介绍"]
   }
 ]

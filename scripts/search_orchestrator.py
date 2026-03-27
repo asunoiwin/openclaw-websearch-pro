@@ -213,9 +213,10 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower()
     path = parsed.path.lower()
-    lowered = raw.lower()
+    query_params = urllib.parse.parse_qs(parsed.query)
     looks_like_search = any(hint in clean(raw[:4000]).lower() for hint in SEARCH_PAGE_HINTS)
-    if not looks_like_search and not any(token in path for token in ("/search", "/s", "/results")):
+    has_search_param = any(key in query_params for key in ("q", "query", "search", "keyword", "wd"))
+    if not looks_like_search and not has_search_param and not any(token in path for token in ("/search", "/s", "/results")):
         return None
 
     def mk(title: str, items: List[Tuple[str, str, str]], mode: str) -> Dict | None:
@@ -234,7 +235,7 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
             cleaned.append((item_title, item_url, item_snippet))
             if len(cleaned) >= 5:
                 break
-        if len(cleaned) < 2:
+        if len(cleaned) < 1:
             return None
         summary = []
         links = []
@@ -282,7 +283,7 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
             items.append((match.group("title"), urllib.parse.urljoin("https://pypi.org", match.group("href")), snippet_match.group("snippet") if snippet_match else ""))
         return mk("PyPI Search", items, "search_results")
 
-    if domain.endswith("huggingface.co"):
+    if domain.endswith("huggingface.co") and (path.startswith("/search") or path.startswith("/models") or has_search_param):
         items = []
         for match in re.finditer(r'<a[^>]*href="(?P<href>/(?:models|datasets|spaces)/[^"]+)"[^>]*>(?P<title>.*?)</a>', raw, re.S):
             items.append((match.group("title"), urllib.parse.urljoin("https://huggingface.co", match.group("href")), ""))
@@ -316,7 +317,7 @@ def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
                 collected.append(item)
         collected.sort(key=lambda item: item.score, reverse=True)
         useful = collected[:5]
-        if len(useful) < 2:
+        if len(useful) < 1:
             return None
         return {
             "url": url,
@@ -356,7 +357,7 @@ def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
         useful.append(item)
         if len(useful) >= 5:
             break
-    if len(useful) < 2:
+    if len(useful) < 1:
         return None
     return {
         "url": url,
@@ -520,6 +521,12 @@ def score_result(item: SearchResult, query: str) -> float:
     return score
 
 
+def query_overlap_score(text: str, query: str) -> int:
+    hay = clean(text).lower()
+    tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", query.lower())
+    return sum(1 for token in dict.fromkeys(tokens) if token in hay)
+
+
 def is_low_signal_text(text: str) -> bool:
     sample = clean(text)[:1200]
     if len(sample) < 80:
@@ -539,6 +546,39 @@ def effective_quality(summary: List[str], raw_text: str, mode: str, base_quality
     if mode == "reader" and base_quality == "high":
         return "high"
     return base_quality
+
+
+def looks_like_search_shell(title: str, sections: List[Dict], links: List[Dict]) -> bool:
+    title_l = clean(title).lower()
+    if any(token in title_l for token in ("search results", "搜索", "search")):
+        return True
+    if len(links) >= 8 and len(sections) <= 3:
+        return True
+    return False
+
+
+def looks_like_generic_site_blurb(title: str, summary: List[str], query: str) -> bool:
+    joined = " ".join(summary[:2])
+    if not joined:
+        return False
+    overlap = query_overlap_score(joined, query)
+    generic_tokens = [
+        "知名",
+        "平台",
+        "网站",
+        "大家可以在这里",
+        "搜索引擎",
+        "blog",
+        "support",
+        "documentation",
+        "resource for web developers",
+        "个性化搜索体验",
+        "优质商品",
+        "新鲜直供",
+        "活跃的acg氛围",
+    ]
+    generic = any(token.lower() in joined.lower() for token in generic_tokens)
+    return overlap == 0 and generic
 
 
 class Extractor(HTMLParser):
@@ -655,7 +695,7 @@ def deep_extract(url: str, query: str) -> Dict:
                 reader_title = distilled.get("title") or reader_title
             except Exception:
                 pass
-        if is_low_signal_text(normalized):
+        if is_low_signal_text(normalized) or looks_like_generic_site_blurb(reader_title, summary, query):
             fallback = extract_domain_search_fallback(url, query)
             if fallback:
                 return fallback
@@ -686,7 +726,12 @@ def deep_extract(url: str, query: str) -> Dict:
             quality = "medium" if summary else quality
         except Exception:
             pass
-    if is_low_signal_text(summary_source) or not summary:
+    if (
+        is_low_signal_text(summary_source)
+        or not summary
+        or (len(summary) <= 1 and looks_like_search_shell(parser.title, parser.sections, parser.links))
+        or looks_like_generic_site_blurb(parser.title, summary, query)
+    ):
         fallback = extract_domain_search_fallback(url, query)
         if fallback:
             return fallback

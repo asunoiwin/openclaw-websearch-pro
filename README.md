@@ -197,6 +197,44 @@ Current specialized paths include:
 
 When a target page is blocked or degraded, the orchestrator can synthesize a usable extraction by re-searching the same query with a domain restriction and converting the best results into structured evidence.
 
+## Common failure patterns and recovery rules
+
+The current search stack now treats several failure modes as generic patterns rather than one-off site hacks:
+
+1. Search-shell pages
+   - The page title looks like search results, but the body is mostly navigation or a thin shell.
+   - Recovery:
+     - prefer `search_results` extraction
+     - or fall back to domain-scoped re-search
+
+2. Challenge / verification / anti-bot pages
+   - Common signals:
+     - `Client Challenge`
+     - `Just a moment`
+     - `Please enable JavaScript`
+     - `403`
+     - security verification copy
+   - Recovery:
+     - downgrade immediately
+     - switch to `domain_search_fallback` or `meta_search_fallback`
+
+3. Overly strict subdomain filtering
+   - Example:
+     - content is indexed under the root domain, but the original URL uses `s.`, `m.`, or `search.` subdomains
+   - Recovery:
+     - relax matching to the root domain
+
+4. JS-heavy pages with unusable DOM
+   - Recovery:
+     - `reader -> distill`
+     - if still weak, re-search using the domain
+
+5. Generic site-description false positives
+   - The page belongs to the target site, but the extracted body is only a generic platform description.
+   - Recovery:
+     - treat as weak
+     - re-search by domain instead of trusting the page body
+
 ## Design notes
 
 - This plugin is the primary search path. It is intended to replace ad-hoc script selection at the task level.

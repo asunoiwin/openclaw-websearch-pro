@@ -104,6 +104,94 @@ def fetch_with_reader_fallback(url: str) -> Tuple[str, str]:
         return "", "unavailable"
 
 
+def try_fetch(url: str, timeout: int = 15) -> str:
+    try:
+        return http_get(url, timeout=timeout)
+    except Exception:
+        return ""
+
+
+def extract_github_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        return None
+    parts = [segment for segment in parsed.path.split("/") if segment]
+    if len(parts) < 2:
+        return None
+    owner, repo = parts[0], parts[1]
+    raw_targets = []
+    if len(parts) >= 5 and parts[2] == "blob":
+        branch = parts[3]
+        blob_path = "/".join(parts[4:])
+        raw_targets.append(f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{blob_path}")
+    raw_targets.extend([
+        f"https://raw.githubusercontent.com/{owner}/{repo}/main/README.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/master/README.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/main/readme.md",
+        f"https://raw.githubusercontent.com/{owner}/{repo}/master/readme.md",
+    ])
+    for candidate in raw_targets:
+        raw = try_fetch(candidate, timeout=15)
+        if not raw:
+            continue
+        normalized = clean(raw[:12000])
+        summary = summarize_text(normalized, query)
+        if not summary:
+            continue
+        return {
+            "url": url,
+            "fetch_mode": "github_raw",
+            "title": f"{owner}/{repo}",
+            "summary": summary,
+            "sections": [],
+            "links": [],
+            "quality": "high",
+            "source_url": candidate,
+        }
+    return None
+
+
+def extract_reddit_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.netloc.lower() not in {"reddit.com", "www.reddit.com", "old.reddit.com"}:
+        return None
+    json_url = url.rstrip("/") + ".json?raw_json=1"
+    raw = try_fetch(json_url, timeout=15)
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None
+    try:
+        post = payload[0]["data"]["children"][0]["data"]
+    except Exception:
+        return None
+    post_title = clean(post.get("title", ""))
+    selftext = clean(post.get("selftext", ""))
+    comments = []
+    try:
+        for child in payload[1]["data"]["children"][:5]:
+            data = child.get("data", {})
+            body = clean(data.get("body", ""))
+            if body:
+                comments.append(body[:280])
+    except Exception:
+        pass
+    text = " ".join(filter(None, [post_title, selftext] + comments))
+    summary = summarize_text(text, query)
+    return {
+        "url": url,
+        "fetch_mode": "reddit_json",
+        "title": post_title,
+        "summary": summary,
+        "sections": [],
+        "links": [],
+        "quality": "high" if summary else "medium",
+        "comments": comments[:3],
+    }
+
+
 def build_variants(query: str, intent: str, site_profiles: Dict[str, List[str]]) -> List[Tuple[str, str]]:
     base = clean(query)
     variants: List[Tuple[str, str]] = [(base, "general")]
@@ -362,6 +450,9 @@ def normalize_reader_text(text: str) -> Tuple[str, str]:
 
 
 def deep_extract(url: str, query: str) -> Dict:
+    special = extract_github_special(url, query) or extract_reddit_special(url, query)
+    if special:
+        return special
     raw, mode = fetch_with_reader_fallback(url)
     if not raw:
         return {"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}

@@ -1,0 +1,51 @@
+{
+  "id": "openclaw-search-orchestrator",
+  "name": "OpenClaw Search Orchestrator",
+  "version": "1.0.0",
+  "description": "Unified multi-engine search, deep extraction, refinement, and proactive search guidance for OpenClaw.",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "proactiveSearch": {
+        "type": "boolean",
+        "default": true
+      },
+      "injectBeforePromptBuild": {
+        "type": "boolean",
+        "default": true
+      },
+      "previewFile": {
+        "type": "string"
+      },
+      "defaultIntent": {
+        "type": "string",
+        "default": "auto"
+      },
+      "maxInitialResults": {
+        "type": "number",
+        "default": 8
+      },
+      "maxDeepResults": {
+        "type": "number",
+        "default": 5
+      },
+      "maxRefineRounds": {
+        "type": "number",
+        "default": 2
+      },
+      "forceAgentIds": {
+        "type": "array"
+      },
+      "skipAgentIds": {
+        "type": "array"
+      },
+      "siteProfiles": {
+        "type": "object"
+      }
+    }
+  }
+}

@@ -1,0 +1,91 @@
+{
+  "forceKeywords": [
+    "搜索",
+    "查找",
+    "检索",
+    "资料",
+    "信息",
+    "最新",
+    "github",
+    "git",
+    "clawhub",
+    "plugin",
+    "plugins",
+    "skill",
+    "skills",
+    "reddit",
+    "google",
+    "baidu",
+    "bing",
+    "reddit",
+    "rebbit",
+    "小红书",
+    "抖音",
+    "知乎",
+    "微博",
+    "b站",
+    "bilibili",
+    "开源",
+    "仓库",
+    "readme",
+    "教程",
+    "最佳实践",
+    "专利",
+    "竞品",
+    "调研",
+    "官网",
+    "文档",
+    "安装"
+  ],
+  "questionSignals": [
+    "是什么",
+    "有没有",
+    "怎么",
+    "如何",
+    "在哪",
+    "哪个",
+    "哪些",
+    "是否"
+  ],
+  "skipKeywords": [
+    "只回复",
+    "只返回",
+    "OK",
+    "状态"
+  ],
+  "siteProfiles": {
+    "developer": [
+      "github.com",
+      "clawhub.com",
+      "npmjs.com",
+      "docs.openclaw.ai",
+      "pypi.org",
+      "huggingface.co"
+    ],
+    "social_cn": [
+      "xiaohongshu.com",
+      "douyin.com",
+      "zhihu.com",
+      "bilibili.com",
+      "weibo.com"
+    ],
+    "general_cn": [
+      "baidu.com",
+      "zhihu.com",
+      "xiaohongshu.com",
+      "douyin.com"
+    ],
+    "community": [
+      "reddit.com",
+      "zhihu.com",
+      "xiaohongshu.com",
+      "bilibili.com"
+    ],
+    "plugin_discovery": [
+      "clawhub.com",
+      "github.com",
+      "docs.openclaw.ai",
+      "npmjs.com"
+    ]
+  }
+}

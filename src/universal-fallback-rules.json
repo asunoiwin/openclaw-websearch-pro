@@ -54,5 +54,19 @@
     "when": "页面标题像搜索结果页，但正文只剩一两条站点介绍或导航文本",
     "action": "不要相信正文摘要，直接切到域名回退或结果页提取",
     "failurePatterns": ["HuggingFace models search 壳页", "Kubernetes search 壳页", "Bilibili/淘宝类泛站点介绍"]
+  },
+  {
+    "id": "browser_session_fallback",
+    "name": "Browser Session Fallback",
+    "when": "目标站点存在登录墙、机器人挑战、重 JS 渲染，且本地用户浏览器可用",
+    "action": "复用本地 Safari 会话和登录态打开目标页，提取真实 DOM 文本、标题、链接和二级结果",
+    "failurePatterns": ["淘宝/天猫搜索页需要登录态", "知乎/微博/X 需要用户态内容", "站点原页只能读到壳页但浏览器里能看到正文"]
+  },
+  {
+    "id": "query_aligned_browser_snippets",
+    "name": "Query-aligned Browser Snippets",
+    "when": "浏览器回退拿到了搜索结果页或长列表页，直接摘要会被导航和站点框架污染",
+    "action": "围绕 query 关键词截取结果页中的局部片段，优先输出商品、教程、标题、价格、销量等强相关信息",
+    "failurePatterns": ["淘宝搜索结果页文本太长", "Bilibili 搜索结果页有用信息被导航稀释", "二级结果已加载但摘要仍然泛化"]
   }
 ]

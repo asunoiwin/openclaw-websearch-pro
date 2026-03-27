@@ -6,6 +6,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -29,6 +30,31 @@ READER_FIRST_DOMAINS = {
     "www.douyin.com",
     "reddit.com",
     "www.reddit.com",
+}
+BROWSER_ASSIST_DOMAINS = {
+    "zhihu.com",
+    "www.zhihu.com",
+    "xiaohongshu.com",
+    "www.xiaohongshu.com",
+    "douyin.com",
+    "www.douyin.com",
+    "search.bilibili.com",
+    "bilibili.com",
+    "www.bilibili.com",
+    "s.weibo.com",
+    "weibo.com",
+    "www.weibo.com",
+    "x.com",
+    "www.x.com",
+    "reddit.com",
+    "www.reddit.com",
+    "producthunt.com",
+    "www.producthunt.com",
+    "gitlab.com",
+    "www.gitlab.com",
+    "s.taobao.com",
+    "search.jd.com",
+    "mobile.yangkeduo.com",
 }
 LOW_SIGNAL_PATTERNS = [
     r"请完成以下验证",
@@ -72,6 +98,15 @@ class SearchResult:
     score: float = 0.0
 
 
+def with_rules(payload: Dict, *rules: str) -> Dict:
+    merged = list(payload.get("applied_rules") or [])
+    for rule in rules:
+        if rule and rule not in merged:
+            merged.append(rule)
+    payload["applied_rules"] = merged
+    return payload
+
+
 def clean(text: str) -> str:
     text = html.unescape(text or "")
     text = re.sub(r"\s+", " ", text).strip()
@@ -88,14 +123,27 @@ def root_domain(value: str) -> str:
     return ".".join(parts[-2:])
 
 
+def url_path_depth(url: str) -> int:
+    parsed = urllib.parse.urlparse(url)
+    return len([segment for segment in parsed.path.split("/") if segment])
+
+
+def is_homepage_like(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.strip("/")
+    if not path:
+        return True
+    return path in {"search", "search_result", "results", "all", "blog", "models"}
+
+
 def http_get(url: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="ignore")
 
 
-def run_json(cmd: List[str]) -> Dict:
-    proc = subprocess.run(cmd, text=True, capture_output=True, timeout=45)
+def run_json(cmd: List[str], timeout: int = 45) -> Dict:
+    proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout)
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "command_failed")
     return json.loads(proc.stdout)
@@ -126,6 +174,91 @@ def try_fetch(url: str, timeout: int = 15) -> str:
         return http_get(url, timeout=timeout)
     except Exception:
         return ""
+
+
+def browser_assisted_extract(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    if domain not in BROWSER_ASSIST_DOMAINS:
+        return None
+    try:
+        status = run_json(["python3", str(BRIDGE), "status", "safari"], timeout=8)
+    except Exception:
+        return None
+    if not status.get("running") or not status.get("dom_extract"):
+        return None
+    original_url = status.get("url", "")
+    try:
+        run_json(["python3", str(BRIDGE), "open", "safari", url], timeout=12)
+        time.sleep(2.2)
+        payload = run_json(["python3", str(BRIDGE), "extract", "safari"], timeout=12)
+    except Exception:
+        payload = None
+    finally:
+        if original_url and original_url != url:
+            try:
+                run_json(["python3", str(BRIDGE), "open", "safari", original_url], timeout=8)
+            except Exception:
+                pass
+    if not payload:
+        return None
+    payload_url = clean(payload.get("url", ""))
+    payload_domain = urllib.parse.urlparse(payload_url).netloc.lower() if payload_url else ""
+    if payload_domain and root_domain(payload_domain) != root_domain(domain):
+        return None
+    text = clean(payload.get("text", ""))[:MAX_TEXT]
+    if is_low_signal_text(text):
+        return None
+    title = clean(payload.get("title", ""))
+    summary = summarize_browser_text(text, query, title, payload_url or url)
+    if not summary or looks_like_generic_site_blurb(title, summary, query):
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "browser_session",
+        "title": title,
+        "summary": summary,
+        "sections": payload.get("headings", [])[:12],
+        "links": payload.get("links", [])[:20],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["browser_session_fallback"],
+    }
+
+
+def summarize_browser_text(text: str, query: str, title: str, url: str) -> List[str]:
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.lower()
+    title_l = clean(title).lower()
+    looks_like_search = (
+        any(token in path for token in ("/search", "/s", "/results", "/all"))
+        or any(token in title_l for token in ("搜索", "search", "results"))
+    )
+    if not looks_like_search:
+        return summarize_text(text, query)
+
+    snippets = []
+    lowered = text.lower()
+    query_tokens = [
+        token for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9._/-]{2,}|[\u4e00-\u9fff]{2,}", query.lower())
+        if len(token) >= 2
+    ]
+    for token in dict.fromkeys(query_tokens):
+        start = 0
+        while True:
+            index = lowered.find(token, start)
+            if index < 0:
+                break
+            left = max(0, index - 24)
+            right = min(len(text), index + 84)
+            snippet = clean(text[left:right])
+            if snippet and snippet not in snippets:
+                snippets.append(snippet)
+            start = index + len(token)
+            if len(snippets) >= 5:
+                break
+        if len(snippets) >= 5:
+            break
+    return snippets[:5] or summarize_text(text, query)
 
 
 def extract_github_special(url: str, query: str) -> Dict | None:
@@ -164,7 +297,7 @@ def extract_github_special(url: str, query: str) -> Dict | None:
             "links": [],
             "quality": "high",
             "source_url": candidate,
-        }
+        } | {"applied_rules": ["github_raw"]}
     return None
 
 
@@ -206,6 +339,7 @@ def extract_reddit_special(url: str, query: str) -> Dict | None:
         "links": [],
         "quality": "high" if summary else "medium",
         "comments": comments[:3],
+        "applied_rules": ["reddit_json"],
     }
 
 
@@ -254,6 +388,7 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
             "sections": [{"level": "results", "text": item[0]} for item in cleaned[:5]],
             "links": links[:10],
             "quality": quality,
+            "applied_rules": ["search_results_extraction"],
         }
 
     if domain in {"www.google.com", "google.com"}:
@@ -298,7 +433,70 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
     return None
 
 
-def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
+def extract_parser_search_results(url: str, parser: "Extractor", query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.lower()
+    query_params = urllib.parse.parse_qs(parsed.query)
+    if not (
+        any(key in query_params for key in ("q", "query", "search", "keyword", "wd"))
+        or any(token in path for token in ("/search", "/s", "/results", "/all"))
+        or looks_like_search_shell(parser.title, parser.sections, parser.links)
+    ):
+        return None
+
+    items = []
+    seen = set()
+    for link in parser.links:
+        text = clean(link.get("text", ""))
+        href = clean(link.get("href", ""))
+        if not text or not href or href in seen:
+            continue
+        if text in {"搜索", "登录", "注册", "首页"}:
+            continue
+        seen.add(href)
+        items.append((text, href, ""))
+        if len(items) >= 5:
+            break
+
+    if len(items) < 2:
+        for section in parser.sections:
+            text = clean(section.get("heading", "") or section.get("text", ""))
+            if not text or text in seen:
+                continue
+            if len(text) < 4:
+                continue
+            seen.add(text)
+            items.append((text, url, ""))
+            if len(items) >= 5:
+                break
+
+    if len(items) < 2:
+        return None
+
+    summary = []
+    links = []
+    sections = []
+    for item_title, item_url, item_snippet in items[:5]:
+        line = item_title
+        if item_snippet:
+            line = f"{item_title}: {item_snippet[:180]}"
+        summary.append(line)
+        links.append({"text": item_title, "href": item_url})
+        sections.append({"level": "results", "text": item_title})
+
+    return {
+        "url": url,
+        "fetch_mode": "search_results",
+        "title": clean(parser.title),
+        "summary": summary,
+        "sections": sections,
+        "links": links,
+        "quality": "high" if len(items) >= 4 else "medium",
+        "applied_rules": ["search_results_extraction", "search_shell_fallback"],
+    }
+
+
+def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = True) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower()
     root = root_domain(domain)
@@ -332,6 +530,7 @@ def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
             "links": [{"text": item.title, "href": item.url} for item in useful],
             "quality": "medium",
             "source_query": query,
+            "applied_rules": ["quality_gating", "meta_search_proxy"],
         }
     variant = f"{query} site:{root or domain}"
     collected: List[SearchResult] = []
@@ -359,6 +558,38 @@ def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
             break
     if len(useful) < 1:
         return None
+    useful.sort(key=lambda item: (is_homepage_like(item.url), -url_path_depth(item.url), -item.score))
+    deep_hits = []
+    if follow_depth:
+        for item in useful[:3]:
+            if is_homepage_like(item.url):
+                continue
+            nested = deep_extract(item.url, query, allow_fallback=False)
+            if nested.get("summary"):
+                deep_hits.append((item, nested))
+            if len(deep_hits) >= 2:
+                break
+    if deep_hits:
+        summary = []
+        links = []
+        sections = []
+        for item, nested in deep_hits:
+            nested_summary = nested.get("summary") or []
+            line = nested_summary[0] if nested_summary else item.title
+            summary.append(line)
+            links.append({"text": nested.get("title") or item.title, "href": item.url})
+            sections.append({"level": "follow", "text": nested.get("title") or item.title})
+        return {
+            "url": url,
+            "fetch_mode": "domain_search_deep_fallback",
+            "title": clean(root or domain),
+            "summary": summary[:5],
+            "sections": sections[:10],
+            "links": links[:10],
+            "quality": "high" if len(deep_hits) >= 2 else "medium",
+            "source_query": variant,
+            "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "followup_refinement", "root_domain_relaxation" if root and root != domain else ""])),
+        }
     return {
         "url": url,
         "fetch_mode": "domain_search_fallback",
@@ -372,6 +603,7 @@ def extract_domain_search_fallback(url: str, query: str) -> Dict | None:
         "links": [{"text": item.title, "href": item.url} for item in useful],
         "quality": "medium",
         "source_query": variant,
+        "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "root_domain_relaxation" if root and root != domain else ""])),
     }
 
 
@@ -671,18 +903,28 @@ def normalize_reader_text(text: str) -> Tuple[str, str]:
     return title, clean(raw)
 
 
-def deep_extract(url: str, query: str) -> Dict:
+def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     special = extract_github_special(url, query) or extract_reddit_special(url, query)
     if special:
         return special
+    domain = urllib.parse.urlparse(url).netloc.lower()
     raw, mode = fetch_with_reader_fallback(url)
     if not raw:
-        return {"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}
+        browser_result = browser_assisted_extract(url, query)
+        if browser_result:
+            return browser_result
+        fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
+        if fallback:
+            return fallback
+        return with_rules({"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}, "unavailable")
     search_special = extract_search_page_special(url, raw, query)
     if search_special:
         return search_special
     if is_low_signal_text(raw):
-        fallback = extract_domain_search_fallback(url, query)
+        browser_result = browser_assisted_extract(url, query)
+        if browser_result:
+            return browser_result
+        fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
         if fallback:
             return fallback
     if "<html" not in raw.lower():
@@ -696,7 +938,10 @@ def deep_extract(url: str, query: str) -> Dict:
             except Exception:
                 pass
         if is_low_signal_text(normalized) or looks_like_generic_site_blurb(reader_title, summary, query):
-            fallback = extract_domain_search_fallback(url, query)
+            browser_result = browser_assisted_extract(url, query)
+            if browser_result:
+                return browser_result
+            fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
             if fallback:
                 return fallback
         return {
@@ -707,9 +952,16 @@ def deep_extract(url: str, query: str) -> Dict:
             "sections": [],
             "links": [],
             "quality": effective_quality(summary, normalized, mode, "high" if summary and mode == "reader" else "medium")
-        }
+        } | {"applied_rules": ["reader_then_distill"] if mode == "reader" else []}
     parser = Extractor()
     parser.feed(raw[:250000])
+    parser_search = extract_parser_search_results(url, parser, query)
+    if parser_search and (
+        looks_like_search_shell(parser.title, parser.sections, parser.links)
+        or looks_like_generic_site_blurb(parser.title, [item["text"] for item in parser_search["sections"]], query)
+        or looks_like_generic_site_blurb(parser.title, [parser.meta_description] if parser.meta_description else [], query)
+    ):
+        return parser_search
     summary_source = " ".join(([parser.meta_description] if parser.meta_description else []) + parser.paragraphs[:20] + parser.bullets[:20])
     summary = summarize_text(summary_source, query)
     quality = "high" if summary and (parser.sections or parser.links or parser.meta_description or mode == "reader") else "medium" if summary else "low"
@@ -732,10 +984,17 @@ def deep_extract(url: str, query: str) -> Dict:
         or (len(summary) <= 1 and looks_like_search_shell(parser.title, parser.sections, parser.links))
         or looks_like_generic_site_blurb(parser.title, summary, query)
     ):
-        fallback = extract_domain_search_fallback(url, query)
+        browser_result = browser_assisted_extract(url, query)
+        if browser_result:
+            return browser_result
+        fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
         if fallback:
             return fallback
     quality = effective_quality(summary, summary_source, mode, quality)
+    if quality == "low" and domain in BROWSER_ASSIST_DOMAINS:
+        browser_result = browser_assisted_extract(url, query)
+        if browser_result:
+            return browser_result
     return {
         "url": url,
         "fetch_mode": mode,
@@ -745,7 +1004,7 @@ def deep_extract(url: str, query: str) -> Dict:
         "sections": parser.sections[:12],
         "links": parser.links[:20],
         "quality": quality
-    }
+    } | {"applied_rules": ["reader_then_distill"] if mode == "reader" else []}
 
 
 def refine_queries(base_query: str, ranked_results: List[SearchResult]) -> List[Tuple[str, str]]:

@@ -172,7 +172,9 @@ Common `fetch_mode` values now include:
 - `github_raw`
 - `reddit_json`
 - `search_results`
+- `browser_session`
 - `domain_search_fallback`
+- `domain_search_deep_fallback`
 - `meta_search_fallback`
 - `reader`
 - `direct`
@@ -196,6 +198,30 @@ Current specialized paths include:
   - Kubernetes Docs search
 
 When a target page is blocked or degraded, the orchestrator can synthesize a usable extraction by re-searching the same query with a domain restriction and converting the best results into structured evidence.
+
+## Browser session fallback
+
+When a target site is blocked by login walls, bot challenges, or heavy client rendering, the orchestrator can reuse the local Safari session and extract the page the user actually sees.
+
+This path is intended for sites such as:
+
+- Taobao / Tmall
+- Zhihu
+- Xiaohongshu
+- Douyin
+- Bilibili
+- Weibo
+- X
+- Reddit
+- Product Hunt
+- GitLab
+
+The fallback is not a blind browser read. It:
+
+1. opens the target page in local Safari
+2. extracts title, URL, DOM text, headings, and links
+3. if the page is a search result page, builds query-aligned snippets instead of summarizing navigation chrome
+4. rejects mismatched pages, login shells, and challenge pages rather than falsely marking them as useful hits
 
 ## Common failure patterns and recovery rules
 

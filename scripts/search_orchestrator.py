@@ -15,9 +15,9 @@ from typing import List, Dict, Tuple
 
 USER_AGENT = "Mozilla/5.0 OpenClaw Search Orchestrator"
 MAX_TEXT = 5000
-HOME = str(Path.home())
-BRIDGE = Path(HOME) / ".openclaw" / "workspace" / "scripts" / "browser-session-bridge.py"
-DISTILL = Path(HOME) / ".openclaw" / "workspace" / "scripts" / "web-content-distill.py"
+HERE = Path(__file__).resolve().parent
+BRIDGE = HERE / "browser_session_bridge.py"
+DISTILL = HERE / "web_content_distill.py"
 READER_FIRST_DOMAINS = {
     "github.com",
     "www.github.com",

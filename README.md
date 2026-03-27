@@ -19,6 +19,17 @@ Unified search orchestration for OpenClaw. This plugin consolidates multi-engine
 - Falls back to reader mode for JS-heavy or noisy domains
 - Runs one refinement loop when first-pass quality is weak
 - Nudges agents to use search proactively on external-information tasks
+- Bundles browser-bridge and content-distill helpers inside the plugin for portability
+
+## Bundled scripts
+
+The plugin now ships with:
+
+- `scripts/search_orchestrator.py`
+- `scripts/browser_session_bridge.py`
+- `scripts/web_content_distill.py`
+
+This keeps the plugin portable and avoids hidden runtime dependencies on `workspace/scripts`.
 
 ## Registered tools
 
@@ -159,3 +170,4 @@ The `extraction` object includes:
 - This plugin is the primary search path. It is intended to replace ad-hoc script selection at the task level.
 - Existing modules can delegate into this plugin instead of maintaining their own search heuristics.
 - The plugin is optimized for “search -> extract -> refine -> summarize”, not just “search -> stop”.
+- `workspace/scripts/web-search.sh` and `workspace/scripts/web-search-structured.sh` remain only as compatibility shims and now delegate into this plugin.

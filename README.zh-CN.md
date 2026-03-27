@@ -19,6 +19,21 @@
 - 对 JS 重、DOM 难取或页面噪声重的站点优先走 reader 提取
 - 首轮结果差时，会做一轮再搜索
 - 在任务开始前，主动提示 agent 使用统一搜索工具，而不是等用户显式说“去搜索”
+- 插件自带浏览器桥和网页蒸馏脚本，不依赖 `workspace/scripts` 才能工作
+
+## 插件内脚本
+
+以下脚本已经内置在插件内，可随插件一起迁移：
+
+- `scripts/search_orchestrator.py`
+- `scripts/browser_session_bridge.py`
+- `scripts/web_content_distill.py`
+
+这样做的目的：
+
+- 保证插件可移植
+- 避免换机器或其他用户安装时缺失依赖脚本
+- 让旧入口只作为兼容代理，而不是主逻辑承载点
 
 ## 注册工具
 
@@ -166,3 +181,4 @@
   - 最后交给 agent 使用
 
 - 现有模块应该逐步委托给这条统一搜索编排器，而不是继续维护各自独立的搜索逻辑。
+- `workspace/scripts/web-search.sh` 和 `workspace/scripts/web-search-structured.sh` 现在只保留兼容入口，内部已经代理到本插件。

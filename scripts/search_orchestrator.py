@@ -309,6 +309,11 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
             return True
         if len(lowered_raw) < 120 and not lowered_title:
             return True
+    if domain == "yangkeduo.com":
+        if "风靡全国的拼团商城" in raw[:6000] or "优质商品新鲜直供" in raw[:6000]:
+            return True
+        if lowered_title == "拼多多" and "/search_result" in urllib.parse.urlparse(url).path:
+            return True
     return False
 
 

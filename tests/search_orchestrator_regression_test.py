@@ -441,6 +441,37 @@ def test_known_error_shell_triggers_fallback_for_douyin_empty_body():
     assert 'known_error_shell' in result['applied_rules']
 
 
+def test_known_error_shell_triggers_fallback_for_pinduoduo_shell():
+    original_fetch = module.fetch_with_reader_fallback
+    original_run_fallbacks = module.run_fallbacks
+
+    def fake_fetch(url):
+        return '<html><head><title>拼多多</title><meta property="og:description" content="风靡全国的拼团商城，优质商品新鲜直供，快来一起拼多多吧"></head><body>拼多多商城</body></html>', 'direct'
+
+    def fake_run_fallbacks(url, query, allow_fallback=True, follow_depth=True):
+        return {
+            'url': url,
+            'fetch_mode': 'external_discovery_fallback',
+            'title': '外部发现',
+            'summary': ['命中站外有效内容'],
+            'sections': [],
+            'links': [],
+            'quality': 'medium',
+            'applied_rules': ['external_discovery_fallback'],
+        }
+
+    module.fetch_with_reader_fallback = fake_fetch
+    module.run_fallbacks = fake_run_fallbacks
+    try:
+        result = module.deep_extract('https://mobile.yangkeduo.com/search_result.html?search_key=openclaw', 'OpenClaw 优化')
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.run_fallbacks = original_run_fallbacks
+
+    assert result['fetch_mode'] == 'external_discovery_fallback'
+    assert 'known_error_shell' in result['applied_rules']
+
+
 def test_jd_item_meta_extractor():
     html = """
     <html><head>
@@ -643,6 +674,7 @@ if __name__ == "__main__":
     test_twitter_oembed_adapter_for_text_status()
     test_known_error_shell_triggers_fallback_for_xiaohongshu()
     test_known_error_shell_triggers_fallback_for_douyin_empty_body()
+    test_known_error_shell_triggers_fallback_for_pinduoduo_shell()
     test_browser_session_fallback_rejects_wrong_page()
     test_browser_session_fallback_rejects_shell_without_query_overlap()
     test_browser_auth_audit_prefers_authenticated_safari()

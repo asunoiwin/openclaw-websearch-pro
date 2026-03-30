@@ -24,6 +24,10 @@ DISTILL = HERE / "web_content_distill.py"
 DOUYIN_PROJECT = Path(os.environ.get("OPENCLAW_DOUYIN_PROJECT", "/tmp/douyin_proj"))
 XHS_PROJECT = Path(os.environ.get("OPENCLAW_XHS_PROJECT", "/tmp/xhs_mcp"))
 PY311 = os.environ.get("OPENCLAW_PY311", "/opt/homebrew/bin/python3.11")
+CHROME_BIN = os.environ.get("OPENCLAW_CHROME_BIN", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
+XHS_BASE_URL = os.environ.get("OPENCLAW_XHS_BASE_URL", "http://127.0.0.1:18060")
+XHS_PID_FILE = Path(os.environ.get("OPENCLAW_XHS_PID_FILE", "/tmp/openclaw_xhs_mcp.pid"))
+XHS_LOG_FILE = Path(os.environ.get("OPENCLAW_XHS_LOG_FILE", "/tmp/openclaw_xhs_mcp.log"))
 YT_DLP = ["python3", "-m", "yt_dlp"]
 GALLERY_DL = ["python3", "-m", "gallery_dl"]
 READER_FIRST_DOMAINS = {
@@ -209,14 +213,110 @@ def douyin_project_available() -> bool:
     return DOUYIN_PROJECT.exists() and command_available(PY311)
 
 
+def local_http_get(url: str, timeout: int = 10) -> str:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", errors="ignore")
+
+
+def local_http_post_json(url: str, payload: Dict, timeout: int = 20) -> Dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="ignore"))
+
+
+def xhs_service_health() -> Dict | None:
+    try:
+        raw = local_http_get(f"{XHS_BASE_URL}/health", timeout=3)
+    except Exception:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {"raw": raw}
+
+
 def xhs_service_available() -> bool:
     if not xhs_project_available():
         return False
-    try:
-        raw = http_get("http://127.0.0.1:18060/health", timeout=3)
-    except Exception:
+    health = xhs_service_health()
+    if not health:
         return False
-    return "healthy" in raw.lower() or "xiaohongshu-mcp" in raw.lower()
+    text = json.dumps(health, ensure_ascii=False).lower()
+    return "healthy" in text or "xiaohongshu-mcp" in text
+
+
+def xhs_login_status() -> bool | None:
+    if not xhs_service_available():
+        return None
+    try:
+        payload = json.loads(local_http_get(f"{XHS_BASE_URL}/api/v1/login/status", timeout=8))
+    except Exception:
+        return None
+    data = payload.get("data") or {}
+    if "is_logged_in" not in data:
+        return None
+    return bool(data.get("is_logged_in"))
+
+
+def xhs_service_pid() -> int | None:
+    try:
+        pid = int(XHS_PID_FILE.read_text().strip())
+    except Exception:
+        return None
+    try:
+        os.kill(pid, 0)
+    except Exception:
+        return None
+    return pid
+
+
+def ensure_xhs_service_started(wait_seconds: int = 12) -> bool:
+    if not xhs_project_available():
+        return False
+    if xhs_service_available():
+        return True
+    if not xhs_service_pid():
+        XHS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+        log_handle = open(XHS_LOG_FILE, "a", encoding="utf-8")
+        proc = subprocess.Popen(
+            [
+                "/opt/homebrew/bin/go",
+                "run",
+                ".",
+                "-headless=true",
+                "-bin",
+                CHROME_BIN,
+            ],
+            cwd=str(XHS_PROJECT),
+            env={
+                **os.environ,
+                "GOPROXY": os.environ.get("OPENCLAW_XHS_GOPROXY", "https://goproxy.cn,direct"),
+                "GOSUMDB": os.environ.get("OPENCLAW_XHS_GOSUMDB", "off"),
+            },
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            text=True,
+        )
+        XHS_PID_FILE.write_text(str(proc.pid), encoding="utf-8")
+    deadline = time.time() + wait_seconds
+    while time.time() < deadline:
+        if xhs_service_available():
+            return True
+        time.sleep(1)
+    return False
 
 
 def adapter_blocker_rules(url: str) -> List[str]:
@@ -233,8 +333,10 @@ def adapter_blocker_rules(url: str) -> List[str]:
         xsec = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
         if not xsec:
             rules.append("xhs_missing_xsec_token")
-        elif not xhs_service_available():
+        elif not ensure_xhs_service_started():
             rules.append("xhs_adapter_service_unavailable")
+        elif xhs_login_status() is False:
+            rules.append("xhs_adapter_login_required")
         else:
             rules.append("xhs_adapter_probe_failed")
     return rules
@@ -324,6 +426,22 @@ def format_commerce_line(title: str, snippet: str, url: str) -> str:
     if title:
         return f"{title} | {signal_text}"
     return signal_text
+
+
+def commerce_result_bonus(title: str, snippet: str, query: str) -> float:
+    combined = f"{title} {snippet}"
+    bonus = 0.0
+    bonus += min(len(extract_commerce_signals(combined)), 4) * 0.18
+    if query_overlap_score(combined, query) >= 1:
+        bonus += 0.12
+    if any(token in combined for token in ("官方旗舰店", "自营", "天猫", "京东")):
+        bonus += 0.12
+    return bonus
+
+
+def has_commerce_content_signal(lines: List[str]) -> bool:
+    sample = " ".join(clean(line) for line in lines if line)
+    return len(extract_commerce_signals(sample)) >= 1
 
 
 def fallback_order_for_url(url: str) -> Tuple[str, ...]:
@@ -752,11 +870,13 @@ def extract_xhs_mcp_special(url: str, query: str) -> Dict | None:
     xsec_token = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
     if not xsec_token:
         return None
-    if not xhs_service_available():
+    if not ensure_xhs_service_started():
+        return None
+    if xhs_login_status() is False:
         return None
     try:
-        payload = http_post_json(
-            "http://127.0.0.1:18060/api/v1/feeds/detail",
+        payload = local_http_post_json(
+            f"{XHS_BASE_URL}/api/v1/feeds/detail",
             {"feed_id": match.group(1), "xsec_token": xsec_token},
             timeout=20,
         )
@@ -1362,6 +1482,8 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                     continue
                 seen.add(key)
                 item.score = score_result(item, query)
+                if (root or domain) in COMMERCE_ROOTS:
+                    item.score += commerce_result_bonus(item.title, item.snippet, query)
                 collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)
     useful = []
@@ -1399,6 +1521,8 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
             if query_overlap_score(" ".join(nested_summary), query) < 1:
                 continue
             if looks_like_generic_site_blurb(nested.get("title") or item.title, nested_summary, query):
+                continue
+            if commerce_root in COMMERCE_ROOTS and not has_commerce_content_signal(nested_summary):
                 continue
             line = nested_summary[0] if nested_summary else item.title
             summary.append(line)
@@ -1459,6 +1583,8 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                     continue
                 seen.add(key)
                 item.score = score_result(item, query)
+                if root in COMMERCE_ROOTS:
+                    item.score += commerce_result_bonus(item.title, item.snippet, query)
                 collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)
     deep_hits = []
@@ -1474,6 +1600,8 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
         if nested.get("quality") == "low":
             continue
         if query_overlap_score(" ".join(nested.get("summary") or []), query) < 1:
+            continue
+        if root in COMMERCE_ROOTS and not has_commerce_content_signal(nested.get("summary") or []):
             continue
         deep_hits.append((item, nested))
         if len(deep_hits) >= 2:
@@ -2011,6 +2139,8 @@ def research(payload: Dict) -> Dict:
                         continue
                     seen.add(key)
                     item.score = score_result(item, query)
+                    if root_domain(urllib.parse.urlparse(item.url).netloc.lower()) in COMMERCE_ROOTS:
+                        item.score += commerce_result_bonus(item.title, item.snippet, query)
                     collected.append(item)
 
     run_round(variants, 1)

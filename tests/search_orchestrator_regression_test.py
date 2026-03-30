@@ -732,8 +732,9 @@ def test_douyin_project_adapter():
 
 
 def test_xhs_mcp_adapter():
-    original_available = module.xhs_service_available
-    original_post = module.http_post_json
+    original_start = module.ensure_xhs_service_started
+    original_login = module.xhs_login_status
+    original_post = module.local_http_post_json
 
     def fake_post(url, payload, timeout=20):
         return {
@@ -746,16 +747,18 @@ def test_xhs_mcp_adapter():
             },
         }
 
-    module.xhs_service_available = lambda: True
-    module.http_post_json = fake_post
+    module.ensure_xhs_service_started = lambda: True
+    module.xhs_login_status = lambda: True
+    module.local_http_post_json = fake_post
     try:
         result = module.extract_xhs_mcp_special(
             "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123",
             "OpenClaw 自动化",
         )
     finally:
-        module.xhs_service_available = original_available
-        module.http_post_json = original_post
+        module.ensure_xhs_service_started = original_start
+        module.xhs_login_status = original_login
+        module.local_http_post_json = original_post
 
     assert result is not None
     assert result["fetch_mode"] == "xhs_mcp"
@@ -764,18 +767,34 @@ def test_xhs_mcp_adapter():
 
 def test_adapter_blocker_rules_for_xhs_and_douyin():
     original_douyin_available = module.douyin_project_available
-    original_xhs_available = module.xhs_service_available
+    original_xhs_start = module.ensure_xhs_service_started
     module.douyin_project_available = lambda: False
-    module.xhs_service_available = lambda: False
+    module.ensure_xhs_service_started = lambda: False
     try:
         douyin_rules = module.adapter_blocker_rules("https://www.douyin.com/video/7488202296297166114")
         xhs_rules = module.adapter_blocker_rules("https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123")
     finally:
         module.douyin_project_available = original_douyin_available
-        module.xhs_service_available = original_xhs_available
+        module.ensure_xhs_service_started = original_xhs_start
 
     assert "douyin_adapter_runtime_missing" in douyin_rules
     assert "xhs_adapter_service_unavailable" in xhs_rules
+
+
+def test_adapter_blocker_rules_for_xhs_login_required():
+    original_xhs_start = module.ensure_xhs_service_started
+    original_xhs_login = module.xhs_login_status
+    module.ensure_xhs_service_started = lambda: True
+    module.xhs_login_status = lambda: False
+    try:
+        xhs_rules = module.adapter_blocker_rules(
+            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123"
+        )
+    finally:
+        module.ensure_xhs_service_started = original_xhs_start
+        module.xhs_login_status = original_xhs_login
+
+    assert "xhs_adapter_login_required" in xhs_rules
 
 
 def test_commerce_line_formatting_extracts_price_and_sales():
@@ -822,6 +841,59 @@ def test_domain_search_fallback_formats_commerce_results():
     assert any("￥39.80" in line or "39.80" in line for line in result["summary"])
 
 
+def test_commerce_bonus_prefers_product_like_result():
+    bonus_product = module.commerce_result_bonus(
+        "蓝牙耳机 官方旗舰店",
+        "券后￥199 已售3000件 官方旗舰店 包邮",
+        "蓝牙耳机",
+    )
+    bonus_generic = module.commerce_result_bonus(
+        "蓝牙耳机 选购指南",
+        "购买建议和使用心得",
+        "蓝牙耳机",
+    )
+    assert bonus_product > bonus_generic
+
+
+def test_commerce_deep_fallback_rejects_non_product_tutorial_content():
+    original = module.search_engine
+    original_deep = module.deep_extract
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "蓝牙耳机使用教程",
+                "https://s.taobao.com/guide/bluetooth-headset",
+                "连接教程和选购建议",
+                engine,
+                variant,
+                site_focus,
+            )
+        ]
+
+    def fake_deep(url, query, allow_fallback=False):
+        if url.endswith("bluetooth-headset"):
+            return {
+                "url": url,
+                "fetch_mode": "direct",
+                "title": "蓝牙耳机连接教程",
+                "summary": ["打开手机蓝牙设置，按照说明配对耳机。", "教程和使用技巧总结。"],
+                "quality": "high",
+            }
+        return {"url": url, "summary": [], "quality": "low"}
+
+    module.search_engine = fake_search_engine
+    module.deep_extract = fake_deep
+    try:
+        result = module.extract_domain_search_fallback("https://s.taobao.com/search?q=蓝牙耳机", "蓝牙耳机")
+    finally:
+        module.search_engine = original
+        module.deep_extract = original_deep
+
+    assert result is not None
+    assert result["fetch_mode"] == "domain_search_fallback"
+
+
 
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
@@ -849,6 +921,9 @@ if __name__ == "__main__":
     test_douyin_project_adapter()
     test_xhs_mcp_adapter()
     test_adapter_blocker_rules_for_xhs_and_douyin()
+    test_adapter_blocker_rules_for_xhs_login_required()
     test_commerce_line_formatting_extracts_price_and_sales()
     test_domain_search_fallback_formats_commerce_results()
+    test_commerce_bonus_prefers_product_like_result()
+    test_commerce_deep_fallback_rejects_non_product_tutorial_content()
     print("search orchestrator regression tests passed")

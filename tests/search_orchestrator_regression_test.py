@@ -215,6 +215,43 @@ def test_yt_dlp_adapter_for_content_page():
     assert result is not None
     assert result["fetch_mode"] == "yt_dlp"
     assert "yt_dlp_adapter" in result["applied_rules"]
+    assert "browser_cookies_chrome" in result["applied_rules"]
+
+
+def test_yt_dlp_adapter_for_reddit_content_page():
+    original_run = module.subprocess.run
+    original_available = module.yt_dlp_available
+
+    class FakeProc:
+        def __init__(self, stdout="", returncode=0):
+            self.stdout = stdout
+            self.stderr = ""
+            self.returncode = returncode
+
+    def fake_run(cmd, text=True, capture_output=True, timeout=35):
+        if cmd[:3] == ["python3", "-m", "yt_dlp"] and "--dump-single-json" in cmd:
+            return FakeProc(
+                stdout='{"title":"OpenClaw Reddit Discussion","description":"Users shared install notes and failure fixes","uploader":"r/OpenClaw","tags":["OpenClaw","discussion"],"like_count":42,"comment_count":17}'
+            )
+        if cmd[:3] == ["python3", "-m", "yt_dlp"] and "--version" in cmd:
+            return FakeProc(stdout="2025.10.14")
+        raise AssertionError(cmd)
+
+    module.subprocess.run = fake_run
+    module.yt_dlp_available = lambda: True
+    try:
+        result = module.extract_yt_dlp_special(
+            "https://www.reddit.com/r/openclaw/comments/abc123/openclaw_install_notes/",
+            "OpenClaw install notes",
+        )
+    finally:
+        module.subprocess.run = original_run
+        module.yt_dlp_available = original_available
+
+    assert result is not None
+    assert result["fetch_mode"] == "yt_dlp"
+    assert "yt_dlp_adapter" in result["applied_rules"]
+    assert "browser_cookies_chrome" in result["applied_rules"]
 
 
 def test_external_discovery_deep_fallback_prefers_nested_content():
@@ -482,6 +519,8 @@ if __name__ == "__main__":
     test_meta_search_fallback_for_search_engines()
     test_github_rule_tagging()
     test_browser_session_fallback_for_low_signal_pages()
+    test_yt_dlp_adapter_for_content_page()
+    test_yt_dlp_adapter_for_reddit_content_page()
     test_browser_session_fallback_rejects_wrong_page()
     test_browser_session_fallback_rejects_shell_without_query_overlap()
     test_browser_auth_audit_prefers_authenticated_safari()

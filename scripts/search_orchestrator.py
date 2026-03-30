@@ -150,6 +150,7 @@ YTDLP_SUPPORTED_ROOTS = {
     "weibo.com",
     "x.com",
     "twitter.com",
+    "reddit.com",
 }
 YTDLP_COOKIE_BROWSER = {
     "bilibili.com": "chrome",
@@ -158,6 +159,7 @@ YTDLP_COOKIE_BROWSER = {
     "weibo.com": "chrome",
     "x.com": "chrome",
     "twitter.com": "chrome",
+    "reddit.com": "chrome",
 }
 GALLERY_DL_SUPPORTED_ROOTS = {
     "weibo.com",

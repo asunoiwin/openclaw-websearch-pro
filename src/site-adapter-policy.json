@@ -30,8 +30,8 @@
       "reason": "匿名/访客系统干扰明显，但具体微博状态页可由 gallery-dl 提取结构化内容。"
     },
     "reddit.com": {
-      "mode": "domain_or_json_adapter",
-      "reason": "帖子页可走 JSON，但搜索页易被 403，适合细分适配。"
+      "mode": "yt_dlp_or_domain_adapter",
+      "reason": "公开搜索页常被 403 或挑战页挡住，但内容页可通过 yt-dlp + 浏览器 cookies 提取结构化内容。"
     },
     "gitlab.com": {
       "mode": "external_until_authenticated",

@@ -21,7 +21,7 @@ Unified search orchestration for OpenClaw. This plugin consolidates multi-engine
 - Nudges agents to use search proactively on external-information tasks
 - Bundles browser-bridge and content-distill helpers inside the plugin for portability
 - Includes site-specific extractors for high-value result pages
-- Includes an optional `yt-dlp` content-page adapter for sites such as Bilibili, Douyin, XiaoHongShu, Weibo, and X
+- Includes an optional `yt-dlp` content-page adapter for sites such as Bilibili, Douyin, XiaoHongShu, Weibo, X, and Reddit
 - Includes an optional `gallery-dl` adapter for sites such as Weibo when a status URL is available
 - Falls back to domain-scoped re-search when the target page is blocked, challenged, or unusable
 
@@ -196,6 +196,7 @@ Current specialized paths include:
   - fetches raw README/blob content directly when possible
 - Reddit discussion URLs
   - tries structured `.json` extraction first
+  - can further use `yt-dlp + browser cookies` on content URLs when direct fetch is blocked
 - Bilibili search pages
   - extracts video cards directly from the SSR HTML and returns content-page links
 - Weibo status URLs

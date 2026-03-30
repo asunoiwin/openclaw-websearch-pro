@@ -4,7 +4,132 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 import urllib.parse
+
+
+def clean(text: str) -> str:
+    return " ".join((text or "").split()).strip()
+
+
+def root_domain(value: str) -> str:
+    host = clean(value).lower()
+    if not host:
+        return ""
+    parsed = urllib.parse.urlparse(host)
+    if parsed.netloc:
+        host = parsed.netloc.lower()
+    parts = [part for part in host.split(".") if part]
+    if len(parts) <= 2:
+        return host
+    return ".".join(parts[-2:])
+
+
+def infer_site_key(url: str) -> str:
+    root = root_domain(url)
+    if "taobao.com" in root or "tmall.com" in root:
+        return "taobao"
+    if "jd.com" in root:
+        return "jd"
+    if "zhihu.com" in root:
+        return "zhihu"
+    if "xiaohongshu.com" in root:
+        return "xiaohongshu"
+    if "douyin.com" in root:
+        return "douyin"
+    if "weibo.com" in root:
+        return "weibo"
+    if root == "x.com":
+        return "x"
+    if "gitlab.com" in root:
+        return "gitlab"
+    if "producthunt.com" in root:
+        return "producthunt"
+    if "reddit.com" in root:
+        return "reddit"
+    if "yangkeduo.com" in root:
+        return "pinduoduo"
+    if "bilibili.com" in root:
+        return "bilibili"
+    return root
+
+
+def detect_auth_state(url: str, title: str, text: str = "") -> dict:
+    site = infer_site_key(url)
+    title_l = clean(title).lower()
+    text_l = clean(text).lower()
+    url_l = clean(url).lower()
+
+    def ok(reason: str) -> dict:
+        return {"site": site, "auth_state": "authenticated", "auth_reason": reason}
+
+    def expired(reason: str) -> dict:
+        return {"site": site, "auth_state": "expired", "auth_reason": reason}
+
+    def unknown(reason: str) -> dict:
+        return {"site": site, "auth_state": "unknown", "auth_reason": reason}
+
+    if site == "gitlab":
+        if "/users/sign_in" in url_l or "登录" in title or "sign in" in title_l:
+            return expired("gitlab_login_page")
+        return ok("gitlab_search_page")
+    if site == "jd":
+        if "passport.jd.com" in url_l or "欢迎登录" in title or "登录页面" in text:
+            return expired("jd_login_shell")
+        if "商品搜索" in title or "plus" in text_l or "购物车" in text:
+            return ok("jd_search_page")
+        return unknown("jd_unclassified")
+    if site == "taobao":
+        if "login.taobao.com" in url_l or "扫码登录" in text or "密码登录" in text:
+            return expired("taobao_login_shell")
+        if "淘宝搜索" in title or "人付款" in text or "店铺" in text:
+            return ok("taobao_search_page")
+        return unknown("taobao_unclassified")
+    if site == "zhihu":
+        if "登录" in title and "search" not in url_l:
+            return expired("zhihu_login_shell")
+        if "搜索结果" in title or "回答" in text or "浏览" in text:
+            return ok("zhihu_search_page")
+        return unknown("zhihu_unclassified")
+    if site == "weibo":
+        if "登录" in title or "扫码登录" in text:
+            return expired("weibo_login_shell")
+        if "微博搜索" in title or "/weibo/" in url_l:
+            return ok("weibo_search_page")
+        return unknown("weibo_unclassified")
+    if site == "x":
+        if "sign in" in title_l or "/i/flow/login" in url_l:
+            return expired("x_login_shell")
+        if "搜索 / x" in title or "/search?" in url_l:
+            return ok("x_search_page")
+        return unknown("x_unclassified")
+    if site == "producthunt":
+        if "/search" in url_l and "product hunt" in title_l:
+            return ok("producthunt_search_page")
+        return unknown("producthunt_unclassified")
+    if site == "reddit":
+        if "/search/" in url_l or "/search?" in url_l:
+            return ok("reddit_search_page")
+        return unknown("reddit_unclassified")
+    if site == "pinduoduo":
+        if "search_result" in url_l:
+            return ok("pinduoduo_search_page")
+        return unknown("pinduoduo_unclassified")
+    if site == "bilibili":
+        if "哔哩哔哩" in title or "/all?keyword=" in url_l:
+            return ok("bilibili_search_page")
+        return unknown("bilibili_unclassified")
+    if site == "xiaohongshu":
+        if "搜索" in title and "小红书" in title:
+            return ok("xiaohongshu_search_page")
+        if "登录" in text and "创作中心" in text:
+            return unknown("xiaohongshu_shell_page")
+        return unknown("xiaohongshu_unclassified")
+    if site == "douyin":
+        if "/search/" in url_l and "抖音" in text:
+            return ok("douyin_search_page")
+        return unknown("douyin_unclassified")
+    return unknown("generic")
 
 
 def run_osascript(script: str) -> str:
@@ -39,7 +164,7 @@ end tell
     try:
         output = run_osascript(script)
         lines = output.splitlines()
-        return {
+        payload = {
             "browser": "chrome",
             "running": True,
             "title": lines[0] if lines else "",
@@ -47,6 +172,8 @@ end tell
             "dom_extract": False,
             "reason": "chrome_applescript_js_disabled_or_unavailable",
         }
+        payload.update(detect_auth_state(payload["url"], payload["title"]))
+        return payload
     except Exception as exc:
         return {"browser": "chrome", "running": False, "error": str(exc)}
 
@@ -70,13 +197,15 @@ end tell
     try:
         output = run_osascript(script)
         lines = output.splitlines()
-        return {
+        payload = {
             "browser": "safari",
             "running": True,
             "title": lines[0] if lines else "",
             "url": lines[1] if len(lines) > 1 else "",
             "dom_extract": True,
         }
+        payload.update(detect_auth_state(payload["url"], payload["title"]))
+        return payload
     except Exception as exc:
         return {"browser": "safari", "running": False, "error": str(exc)}
 
@@ -102,7 +231,9 @@ tell application "Safari"
 end tell
 '''
     output = run_osascript(script)
-    return json.loads(output)
+    payload = json.loads(output)
+    payload.update(detect_auth_state(payload.get("url", ""), payload.get("title", ""), payload.get("text", "")))
+    return payload
 
 
 def browser_status(which: str) -> dict:
@@ -114,6 +245,13 @@ def browser_status(which: str) -> dict:
     if chrome.get("running"):
         return chrome
     return safari_status()
+
+
+def all_browser_status() -> dict:
+    return {
+        "chrome": chrome_status(),
+        "safari": safari_status(),
+    }
 
 
 def open_url(which: str, url: str) -> dict:
@@ -137,9 +275,46 @@ end tell
     return {"ok": True, "browser": which, "url": url}
 
 
+def wait_for_page(which: str, url: str, timeout: float = 8.0) -> dict:
+    target_root = root_domain(url)
+    deadline = time.time() + timeout
+    last = {}
+    while time.time() < deadline:
+        status = browser_status(which)
+        last = status
+        current_root = root_domain(status.get("url", ""))
+        if current_root and current_root == target_root:
+            return status
+        time.sleep(0.35)
+    return last
+
+
+def audit_page(which: str, url: str) -> dict:
+    target_root = root_domain(url)
+    open_url(which, url)
+    status = wait_for_page(which, url)
+    if root_domain(status.get("url", "")) != target_root:
+        open_url(which, url)
+        status = wait_for_page(which, url, timeout=10.0)
+    payload = {
+        "browser": which,
+        "requested_url": url,
+        "status": status,
+    }
+    if which == "safari":
+        if root_domain(status.get("url", "")) == target_root:
+            try:
+                payload["extract"] = safari_extract()
+            except Exception as exc:
+                payload["extract_error"] = str(exc)
+        else:
+            payload["extract_error"] = "target_page_not_reached"
+    return payload
+
+
 def main() -> int:
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "usage: browser_session_bridge.py <status|extract|open|search> [args...]"}, ensure_ascii=False))
+        print(json.dumps({"error": "usage: browser_session_bridge.py <status|status-all|extract|open|search|audit> [args...]"}, ensure_ascii=False))
         return 1
 
     cmd = sys.argv[1]
@@ -147,6 +322,10 @@ def main() -> int:
 
     if cmd == "status":
         print(json.dumps(browser_status(browser), ensure_ascii=False))
+        return 0
+
+    if cmd == "status-all":
+        print(json.dumps(all_browser_status(), ensure_ascii=False))
         return 0
 
     if cmd == "extract":
@@ -163,6 +342,13 @@ def main() -> int:
             print(json.dumps({"error": "usage: browser_session_bridge.py open <browser> <url>"}, ensure_ascii=False))
             return 1
         print(json.dumps(open_url(browser, sys.argv[3]), ensure_ascii=False))
+        return 0
+
+    if cmd == "audit":
+        if len(sys.argv) < 4:
+            print(json.dumps({"error": "usage: browser_session_bridge.py audit <browser> <url>"}, ensure_ascii=False))
+            return 1
+        print(json.dumps(audit_page(browser, sys.argv[3]), ensure_ascii=False))
         return 0
 
     if cmd == "search":

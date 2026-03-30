@@ -29,6 +29,7 @@ The plugin now ships with:
 
 - `scripts/search_orchestrator.py`
 - `scripts/browser_session_bridge.py`
+- `scripts/browser_auth_audit.py`
 - `scripts/web_content_distill.py`
 
 This keeps the plugin portable and avoids hidden runtime dependencies on `workspace/scripts`.
@@ -175,6 +176,7 @@ Common `fetch_mode` values now include:
 - `browser_session`
 - `domain_search_fallback`
 - `domain_search_deep_fallback`
+- `external_discovery_fallback`
 - `meta_search_fallback`
 - `reader`
 - `direct`
@@ -222,6 +224,48 @@ The fallback is not a blind browser read. It:
 2. extracts title, URL, DOM text, headings, and links
 3. if the page is a search result page, builds query-aligned snippets instead of summarizing navigation chrome
 4. rejects mismatched pages, login shells, and challenge pages rather than falsely marking them as useful hits
+
+Before that fallback is trusted, the orchestrator also performs a browser auth audit:
+
+1. verify the browser is running
+2. verify the current session is not expired
+3. verify the opened page stayed on the expected domain
+4. reject login shells, control pages, and low-signal browser content
+
+Only after this audit passes does the browser result count as a valid extraction source.
+
+### Batch browser auth audit
+
+The plugin also ships with a batch audit helper:
+
+- `scripts/browser_auth_audit.py`
+
+Default site list:
+
+- `data/browser_auth_sites.json`
+
+Usage:
+
+```bash
+python3 scripts/browser_auth_audit.py data/browser_auth_sites.json
+```
+
+It reports, per site:
+
+- browser
+- requested URL
+- auth state
+- auth reason
+- and, for Safari, extracted content when available
+
+## External discovery fallback
+
+When the target site's own search page is completely blocked and site-scoped re-search still cannot recover useful results, the orchestrator falls back to site-semantic external discovery:
+
+1. infer a site brand such as `x twitter`, `gitlab`, `36kr`, `京东`, or `拼多多`
+2. combine that brand with the query and site-specific suffixes
+3. re-run general web search on Bing / DuckDuckGo
+4. return usable results for that site context instead of an empty or challenge-only response
 
 ## Common failure patterns and recovery rules
 

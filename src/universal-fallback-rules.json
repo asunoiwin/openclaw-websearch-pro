@@ -63,10 +63,24 @@
     "failurePatterns": ["淘宝/天猫搜索页需要登录态", "知乎/微博/X 需要用户态内容", "站点原页只能读到壳页但浏览器里能看到正文"]
   },
   {
+    "id": "browser_auth_audit",
+    "name": "Browser Auth Audit",
+    "when": "准备走浏览器回退前，需要先确认浏览器是否真的处于登录态、页面是否落在正确域名，以及当前结果页不是登录壳页",
+    "action": "先对目标站点执行浏览器登录态预审，再决定是否继续做浏览器提取",
+    "failurePatterns": ["已打开站点但会话过期", "落到 sign in/login 页面", "打开后跳到了错误域名或控制台页"]
+  },
+  {
     "id": "query_aligned_browser_snippets",
     "name": "Query-aligned Browser Snippets",
     "when": "浏览器回退拿到了搜索结果页或长列表页，直接摘要会被导航和站点框架污染",
     "action": "围绕 query 关键词截取结果页中的局部片段，优先输出商品、教程、标题、价格、销量等强相关信息",
     "failurePatterns": ["淘宝搜索结果页文本太长", "Bilibili 搜索结果页有用信息被导航稀释", "二级结果已加载但摘要仍然泛化"]
+  },
+  {
+    "id": "external_discovery_fallback",
+    "name": "External Discovery Fallback",
+    "when": "目标站点搜索页本身完全被验证、登录墙或不可用页面挡住，站内回退也拿不到结果",
+    "action": "转为站点语义外部发现，用站点品牌词 + query 组合去通用搜索引擎重搜，至少返回与该站点场景强相关的可用结果",
+    "failurePatterns": ["X 搜索页只剩 JavaScript 提示", "GitLab 搜索页 403/验证", "36kr/JD/拼多多站内搜索完全不可用"]
   }
 ]

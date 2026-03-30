@@ -1,0 +1,14 @@
+[
+  {"name": "Taobao Search", "browser": "safari", "url": "https://s.taobao.com/search?q=openclaw"},
+  {"name": "JD Search", "browser": "safari", "url": "https://search.jd.com/Search?keyword=openclaw"},
+  {"name": "Zhihu Search", "browser": "safari", "url": "https://www.zhihu.com/search?type=content&q=openclaw"},
+  {"name": "Xiaohongshu Search", "browser": "safari", "url": "https://www.xiaohongshu.com/search_result?keyword=openclaw"},
+  {"name": "Douyin Search", "browser": "safari", "url": "https://www.douyin.com/search/openclaw"},
+  {"name": "Weibo Search", "browser": "chrome", "url": "https://s.weibo.com/weibo/openclaw"},
+  {"name": "X Search", "browser": "chrome", "url": "https://x.com/search?q=openclaw&src=typed_query"},
+  {"name": "GitLab Search", "browser": "chrome", "url": "https://gitlab.com/search?search=openclaw"},
+  {"name": "Product Hunt Search", "browser": "chrome", "url": "https://www.producthunt.com/search?q=openclaw"},
+  {"name": "Reddit Search", "browser": "chrome", "url": "https://www.reddit.com/search/?q=openclaw"},
+  {"name": "Pinduoduo Search", "browser": "chrome", "url": "https://mobile.yangkeduo.com/search_result.html?search_key=openclaw"},
+  {"name": "Bilibili Search", "browser": "chrome", "url": "https://search.bilibili.com/all?keyword=openclaw"}
+]

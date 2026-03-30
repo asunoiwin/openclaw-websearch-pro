@@ -56,6 +56,21 @@ BROWSER_ASSIST_DOMAINS = {
     "search.jd.com",
     "mobile.yangkeduo.com",
 }
+SITE_BROWSER_PREFERENCES = {
+    "taobao.com": ["safari"],
+    "tmall.com": ["safari"],
+    "jd.com": ["safari"],
+    "zhihu.com": ["safari"],
+    "xiaohongshu.com": ["safari"],
+    "douyin.com": ["safari"],
+    "bilibili.com": ["safari", "chrome"],
+    "weibo.com": ["chrome", "safari"],
+    "x.com": ["chrome", "safari"],
+    "reddit.com": ["chrome", "safari"],
+    "producthunt.com": ["chrome", "safari"],
+    "gitlab.com": ["chrome", "safari"],
+    "yangkeduo.com": ["chrome", "safari"],
+}
 LOW_SIGNAL_PATTERNS = [
     r"请完成以下验证",
     r"登录后查看更多",
@@ -69,6 +84,11 @@ LOW_SIGNAL_PATTERNS = [
     r"not a bot",
     r"forbidden",
     r"returned error 403",
+    r"欢迎登录",
+    r"扫码登录",
+    r"密码登录",
+    r"短信登录",
+    r"立即注册",
 ]
 SEARCH_PAGE_HINTS = [
     "search",
@@ -84,6 +104,19 @@ SITE_QUERY_SUFFIXES = {
     "xiaohongshu": ["教程", "测评"],
     "douyin": ["教程", "实测"],
     "zhihu": ["经验", "回答"],
+    "x": ["thread", "post", "discussion"],
+    "gitlab": ["repo", "project", "issue"],
+    "36kr": ["资讯", "报道", "文章"],
+    "taobao": ["教程", "安装", "购买"],
+    "jd": ["教程", "安装", "购买"],
+    "yangkeduo": ["教程", "安装", "购买"],
+}
+EXTERNAL_DISCOVERY_BRANDS = {
+    "x.com": "x twitter",
+    "gitlab.com": "gitlab",
+    "36kr.com": "36kr",
+    "jd.com": "京东",
+    "yangkeduo.com": "拼多多",
 }
 
 
@@ -181,26 +214,12 @@ def browser_assisted_extract(url: str, query: str) -> Dict | None:
     domain = parsed.netloc.lower()
     if domain not in BROWSER_ASSIST_DOMAINS:
         return None
-    try:
-        status = run_json(["python3", str(BRIDGE), "status", "safari"], timeout=8)
-    except Exception:
+    audit = audit_browser_session(url)
+    if not audit:
         return None
-    if not status.get("running") or not status.get("dom_extract"):
-        return None
-    original_url = status.get("url", "")
-    try:
-        run_json(["python3", str(BRIDGE), "open", "safari", url], timeout=12)
-        time.sleep(2.2)
-        payload = run_json(["python3", str(BRIDGE), "extract", "safari"], timeout=12)
-    except Exception:
-        payload = None
-    finally:
-        if original_url and original_url != url:
-            try:
-                run_json(["python3", str(BRIDGE), "open", "safari", original_url], timeout=8)
-            except Exception:
-                pass
-    if not payload:
+    browser = audit.get("browser")
+    payload = audit.get("extract")
+    if not browser or not payload:
         return None
     payload_url = clean(payload.get("url", ""))
     payload_domain = urllib.parse.urlparse(payload_url).netloc.lower() if payload_url else ""
@@ -210,8 +229,12 @@ def browser_assisted_extract(url: str, query: str) -> Dict | None:
     if is_low_signal_text(text):
         return None
     title = clean(payload.get("title", ""))
+    if looks_like_login_shell(title, text):
+        return None
     summary = summarize_browser_text(text, query, title, payload_url or url)
     if not summary or looks_like_generic_site_blurb(title, summary, query):
+        return None
+    if query_overlap_score(" ".join(summary), query) < 1:
         return None
     return {
         "url": url,
@@ -221,8 +244,63 @@ def browser_assisted_extract(url: str, query: str) -> Dict | None:
         "sections": payload.get("headings", [])[:12],
         "links": payload.get("links", [])[:20],
         "quality": "high" if len(summary) >= 2 else "medium",
-        "applied_rules": ["browser_session_fallback"],
+        "browser": browser,
+        "auth_state": audit.get("auth_state"),
+        "auth_reason": audit.get("auth_reason"),
+        "applied_rules": ["browser_session_fallback", "browser_auth_audit"],
     }
+
+
+def preferred_browsers_for_domain(domain: str) -> List[str]:
+    root = root_domain(domain)
+    for key, browsers in SITE_BROWSER_PREFERENCES.items():
+        if key in domain or key == root:
+            return browsers[:]
+    return ["safari", "chrome"]
+
+
+def audit_browser_session(url: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    for browser in preferred_browsers_for_domain(domain):
+        try:
+            status = run_json(["python3", str(BRIDGE), "status", browser], timeout=8)
+        except Exception:
+            continue
+        if not status.get("running"):
+            continue
+        if browser != "safari":
+            continue
+        original_url = status.get("url", "")
+        try:
+            audit = run_json(["python3", str(BRIDGE), "audit", browser, url], timeout=18)
+        except Exception:
+            audit = None
+        finally:
+            if original_url and original_url != url:
+                try:
+                    run_json(["python3", str(BRIDGE), "open", browser, original_url], timeout=8)
+                except Exception:
+                    pass
+        if not audit:
+            continue
+        page_status = audit.get("extract") or audit.get("status") or {}
+        auth_state = page_status.get("auth_state") or audit.get("status", {}).get("auth_state")
+        if auth_state == "expired":
+            continue
+        text = clean(page_status.get("text", ""))
+        title = clean(page_status.get("title", ""))
+        if looks_like_login_shell(title, text):
+            continue
+        if is_low_signal_text(text):
+            continue
+        return {
+            "browser": browser,
+            "auth_state": auth_state or "unknown",
+            "auth_reason": page_status.get("auth_reason") or audit.get("status", {}).get("auth_reason"),
+            "extract": page_status,
+        }
+    return None
 
 
 def summarize_browser_text(text: str, query: str, title: str, url: str) -> List[str]:
@@ -533,16 +611,22 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
             "applied_rules": ["quality_gating", "meta_search_proxy"],
         }
     variant = f"{query} site:{root or domain}"
+    variants = [variant]
+    focus = next((key for key in SITE_QUERY_SUFFIXES if key in domain or key in root), None)
+    if focus:
+        for suffix in SITE_QUERY_SUFFIXES.get(focus, []):
+            variants.append(f"{query} {suffix} site:{root or domain}")
     collected: List[SearchResult] = []
     seen = set()
     for engine in ("bing", "ddg"):
-        for item in search_engine(engine, variant, domain):
-            key = (item.url or item.title).strip().lower()
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            item.score = score_result(item, query)
-            collected.append(item)
+        for variant_query in variants:
+            for item in search_engine(engine, variant_query, domain):
+                key = (item.url or item.title).strip().lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                item.score = score_result(item, query)
+                collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)
     useful = []
     for item in collected:
@@ -587,7 +671,7 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
             "sections": sections[:10],
             "links": links[:10],
             "quality": "high" if len(deep_hits) >= 2 else "medium",
-            "source_query": variant,
+            "source_query": variant if len(variants) == 1 else variants[:4],
             "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "followup_refinement", "root_domain_relaxation" if root and root != domain else ""])),
         }
     return {
@@ -602,8 +686,51 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
         "sections": [{"level": "results", "text": item.title} for item in useful],
         "links": [{"text": item.title, "href": item.url} for item in useful],
         "quality": "medium",
-        "source_query": variant,
+        "source_query": variant if len(variants) == 1 else variants[:4],
         "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "root_domain_relaxation" if root and root != domain else ""])),
+    }
+
+
+def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    root = root_domain(domain)
+    brand = EXTERNAL_DISCOVERY_BRANDS.get(root)
+    if not brand:
+        return None
+    focus = next((key for key in SITE_QUERY_SUFFIXES if key in domain or key in root), None)
+    queries = [f"{query} {brand}"]
+    if focus:
+        queries.extend(f"{query} {brand} {suffix}" for suffix in SITE_QUERY_SUFFIXES.get(focus, []))
+    collected: List[SearchResult] = []
+    seen = set()
+    for engine in ("bing", "ddg"):
+        for variant_query in queries:
+            for item in search_engine(engine, variant_query, "general"):
+                key = (item.url or item.title).strip().lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                item.score = score_result(item, query)
+                collected.append(item)
+    collected.sort(key=lambda item: item.score, reverse=True)
+    useful = collected[:5]
+    if not useful:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "external_discovery_fallback",
+        "title": clean(root or domain),
+        "summary": [
+            f"{item.title}: {item.snippet[:180]}".strip(": ")
+            if item.snippet else item.title
+            for item in useful
+        ],
+        "sections": [{"level": "results", "text": item.title} for item in useful],
+        "links": [{"text": item.title, "href": item.url} for item in useful],
+        "quality": "medium",
+        "source_query": queries[:4],
+        "applied_rules": ["quality_gating", "external_discovery_fallback"],
     }
 
 
@@ -769,6 +896,21 @@ def is_low_signal_text(text: str) -> bool:
     )
 
 
+def looks_like_login_shell(title: str, text: str) -> bool:
+    sample = f"{clean(title)} {clean(text)[:800]}".lower()
+    markers = [
+        "登录页面",
+        "欢迎登录",
+        "扫码登录",
+        "密码登录",
+        "短信登录",
+        "立即注册",
+        "forgot password",
+    ]
+    hits = sum(1 for marker in markers if marker.lower() in sample)
+    return hits >= 2
+
+
 def effective_quality(summary: List[str], raw_text: str, mode: str, base_quality: str) -> str:
     if not summary:
         return "low"
@@ -916,6 +1058,9 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
         if fallback:
             return fallback
+        external = extract_external_discovery_fallback(url, query) if allow_fallback else None
+        if external:
+            return external
         return with_rules({"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}, "unavailable")
     search_special = extract_search_page_special(url, raw, query)
     if search_special:
@@ -927,6 +1072,9 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
         if fallback:
             return fallback
+        external = extract_external_discovery_fallback(url, query) if allow_fallback else None
+        if external:
+            return external
     if "<html" not in raw.lower():
         reader_title, normalized = normalize_reader_text(raw[:MAX_TEXT]) if mode == "reader" else ("", clean(raw[:MAX_TEXT]))
         summary = summarize_text(normalized, query)
@@ -944,6 +1092,9 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
             fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
             if fallback:
                 return fallback
+            external = extract_external_discovery_fallback(url, query) if allow_fallback else None
+            if external:
+                return external
         return {
             "url": url,
             "fetch_mode": mode,
@@ -990,7 +1141,17 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
         if fallback:
             return fallback
+        external = extract_external_discovery_fallback(url, query) if allow_fallback else None
+        if external:
+            return external
     quality = effective_quality(summary, summary_source, mode, quality)
+    if quality == "low" and allow_fallback:
+        fallback = extract_domain_search_fallback(url, query, follow_depth=False)
+        if fallback:
+            return fallback
+        external = extract_external_discovery_fallback(url, query)
+        if external:
+            return external
     if quality == "low" and domain in BROWSER_ASSIST_DOMAINS:
         browser_result = browser_assisted_extract(url, query)
         if browser_result:

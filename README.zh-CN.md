@@ -29,6 +29,7 @@
 
 - `scripts/search_orchestrator.py`
 - `scripts/browser_session_bridge.py`
+- `scripts/browser_auth_audit.py`
 - `scripts/web_content_distill.py`
 
 这样做的目的：
@@ -180,6 +181,7 @@
 - `browser_session`
 - `domain_search_fallback`
 - `domain_search_deep_fallback`
+- `external_discovery_fallback`
 - `meta_search_fallback`
 - `reader`
 - `direct`
@@ -230,12 +232,65 @@
 - Product Hunt
 - GitLab
 
+在真正走浏览器回退前，搜索器现在会先做一次登录态预审：
+
+1. 检查目标浏览器是否在运行
+2. 检查当前会话是否已过期
+3. 检查打开后是否落到正确域名
+4. 检查当前页是不是登录壳页、控制台页或低信号页
+
+只有预审通过，才会把浏览器结果当成有效信息源。
+
+### 浏览器登录态批量审计
+
+插件内还带了一个批量审计脚本：
+
+- `scripts/browser_auth_audit.py`
+
+默认站点清单：
+
+- `data/browser_auth_sites.json`
+
+用法：
+
+```bash
+python3 scripts/browser_auth_audit.py data/browser_auth_sites.json
+```
+
+它会输出每个站点当前的：
+
+- 浏览器
+- 请求 URL
+- 登录态
+- 登录态原因
+- 如果是 Safari，还会附带可提取正文结果
+
 这条回退不是简单“把浏览器页读一遍”，而是：
 
 1. 用本地 Safari 打开目标页
 2. 读取真实 DOM 文本、标题、链接、标题层级
 3. 如果页面是搜索结果页，优先抽取与 query 强相关的局部片段
 4. 如果拿到的是控制台页、登录壳页、错误域名页，则直接判失败，不把它误算成高质量命中
+
+## 站点语义外部发现兜底
+
+当目标站点本身完全不可取，且站内 `site:` 回退仍然拿不到可用结果时，搜索器会进入最后一层兜底：
+
+1. 识别站点品牌词，例如：
+   - `x twitter`
+   - `gitlab`
+   - `36kr`
+   - `京东`
+   - `拼多多`
+2. 把品牌词和 query 以及站点专属补充词拼成新查询
+3. 在 Bing / DuckDuckGo 上重新做通用搜索
+4. 返回与该站点场景强相关的可用结果，而不是空结果
+
+这条路径主要解决：
+
+- 目标站点搜索页只剩 JavaScript/验证提示
+- 目标站点搜索页被 403/反爬完全挡住
+- 电商站点搜索页只能看到平台介绍页、但站外仍能找到相关教程、文档、讨论和替代信息
 
 ## 通用失败原因与恢复规则
 

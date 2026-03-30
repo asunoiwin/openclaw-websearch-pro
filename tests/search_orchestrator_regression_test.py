@@ -187,6 +187,111 @@ def test_browser_session_fallback_rejects_wrong_page():
     assert result is None
 
 
+def test_browser_session_fallback_rejects_shell_without_query_overlap():
+    original_run_json = module.run_json
+
+    def fake_run_json(args, timeout=45):
+        if args[1] != str(module.BRIDGE):
+            raise AssertionError(args)
+        if args[2] == "status" and args[3] == "safari":
+            return {"running": True, "dom_extract": True, "url": "https://www.douyin.com/search/openclaw"}
+        if args[2] == "audit" and args[3] == "safari":
+            return {
+                "browser": "safari",
+                "status": {"auth_state": "authenticated", "auth_reason": "douyin_search_page"},
+                "extract": {
+                    "url": "https://www.douyin.com/search/openclaw",
+                    "title": "抖音搜索",
+                    "text": "精选 推荐 搜索 关注 朋友 我的 直播 放映厅 短剧 下载抖音精选 算法推荐专项举报 广告投放 用户服务协议 隐私政策",
+                    "headings": [],
+                    "links": [],
+                    "auth_state": "authenticated",
+                    "auth_reason": "douyin_search_page",
+                },
+            }
+        if args[2] == "open" and args[3] == "safari":
+            return {"ok": True}
+        raise AssertionError(args)
+
+    module.run_json = fake_run_json
+    try:
+        result = module.browser_assisted_extract("https://www.douyin.com/search/openclaw", "openclaw 优化")
+    finally:
+        module.run_json = original_run_json
+
+    assert result is None
+
+
+def test_browser_auth_audit_prefers_authenticated_safari():
+    original_run_json = module.run_json
+    status_calls = {"count": 0}
+
+    def fake_run_json(args, timeout=45):
+        if args[1] != str(module.BRIDGE):
+            raise AssertionError(args)
+        if args[2] == "status" and args[3] == "safari":
+            status_calls["count"] += 1
+            return {"running": True, "dom_extract": True, "url": "https://www.zhihu.com/question/123"}
+        if args[2] == "audit" and args[3] == "safari":
+            return {
+                "browser": "safari",
+                "status": {"auth_state": "authenticated", "auth_reason": "zhihu_search_page"},
+                "extract": {
+                    "url": "https://www.zhihu.com/question/123",
+                    "title": "知乎问题页",
+                    "text": "OpenClaw 优化 经验 总结 回答 内容 很完整，包含安装步骤、失败原因、修复思路、对比实验和多个真实案例，能够证明这不是登录壳页也不是低信号页面。这里还有继续深入的方案比较、配置差异、插件组合建议、运行链说明、真实失败案例和恢复方案，确保文本长度足够并且和查询保持强相关。",
+                    "auth_state": "authenticated",
+                    "auth_reason": "zhihu_search_page",
+                },
+            }
+        if args[2] == "open" and args[3] == "safari":
+            return {"ok": True}
+        raise AssertionError(args)
+
+    module.run_json = fake_run_json
+    try:
+        result = module.audit_browser_session("https://www.zhihu.com/question/123")
+    finally:
+        module.run_json = original_run_json
+
+    assert result is not None
+    assert result["browser"] == "safari"
+    assert result["auth_state"] == "authenticated"
+
+
+def test_browser_auth_audit_rejects_expired_session():
+    original_run_json = module.run_json
+
+    def fake_run_json(args, timeout=45):
+        if args[1] != str(module.BRIDGE):
+            raise AssertionError(args)
+        if args[2] == "status" and args[3] == "safari":
+            return {"running": True, "dom_extract": True, "url": "https://gitlab.com/users/sign_in"}
+        if args[2] == "audit" and args[3] == "safari":
+            return {
+                "browser": "safari",
+                "status": {"auth_state": "expired", "auth_reason": "gitlab_login_page"},
+                "extract": {
+                    "url": "https://gitlab.com/users/sign_in",
+                    "title": "Sign in · GitLab",
+                    "text": "Sign in to GitLab",
+                    "auth_state": "expired",
+                    "auth_reason": "gitlab_login_page",
+                },
+            }
+        if args[2] == "open" and args[3] == "safari":
+            return {"ok": True}
+        raise AssertionError(args)
+
+    module.run_json = fake_run_json
+    try:
+        result = module.audit_browser_session("https://gitlab.com/search?search=openclaw")
+    finally:
+        module.run_json = original_run_json
+
+    assert result is None
+
+
 def test_generic_search_shell_extraction_from_sections():
     html = """
     <html><head><title>openclaw-哔哩哔哩_bilibili</title></head><body>
@@ -218,5 +323,8 @@ if __name__ == "__main__":
     test_github_rule_tagging()
     test_browser_session_fallback_for_low_signal_pages()
     test_browser_session_fallback_rejects_wrong_page()
+    test_browser_session_fallback_rejects_shell_without_query_overlap()
+    test_browser_auth_audit_prefers_authenticated_safari()
+    test_browser_auth_audit_rejects_expired_session()
     test_generic_search_shell_extraction_from_sections()
     print("search orchestrator regression tests passed")

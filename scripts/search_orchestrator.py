@@ -116,6 +116,13 @@ SITE_QUERY_SUFFIXES = {
     "jd": ["教程", "安装", "购买"],
     "yangkeduo": ["教程", "安装", "购买"],
 }
+EXTERNAL_DISCOVERY_EXTRA_SUFFIXES = {
+    "xiaohongshu.com": ["GitHub", "skill", "MCP", "教程", "自动化"],
+    "douyin.com": ["GitHub", "skill", "MCP", "教程", "自动化"],
+    "weibo.com": ["GitHub", "发布", "教程"],
+    "x.com": ["GitHub", "thread", "post", "discussion"],
+    "reddit.com": ["GitHub", "discussion", "review"],
+}
 EXTERNAL_DISCOVERY_BRANDS = {
     "taobao.com": "淘宝 taobao",
     "tmall.com": "天猫 tmall",
@@ -1182,6 +1189,8 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
     queries = [f"{query} {brand}"]
     if focus:
         queries.extend(f"{query} {brand} {suffix}" for suffix in SITE_QUERY_SUFFIXES.get(focus, []))
+    for suffix in EXTERNAL_DISCOVERY_EXTRA_SUFFIXES.get(root, []):
+        queries.append(f"{query} {brand} {suffix}")
     collected: List[SearchResult] = []
     seen = set()
     for engine in ("bing", "ddg"):

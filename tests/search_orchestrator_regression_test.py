@@ -472,6 +472,28 @@ def test_known_error_shell_triggers_fallback_for_pinduoduo_shell():
     assert 'known_error_shell' in result['applied_rules']
 
 
+def test_external_discovery_adds_extra_suffixes_for_xiaohongshu():
+    original = module.search_engine
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return []
+
+    module.search_engine = fake_search_engine
+    try:
+        module.extract_external_discovery_fallback(
+            'https://www.xiaohongshu.com/search_result?keyword=openclaw',
+            'OpenClaw 优化',
+        )
+    finally:
+        module.search_engine = original
+
+    joined = " | ".join(seen_queries)
+    assert "OpenClaw 优化 小红书 xiaohongshu GitHub" in joined
+    assert "OpenClaw 优化 小红书 xiaohongshu skill" in joined
+
+
 def test_jd_item_meta_extractor():
     html = """
     <html><head>
@@ -675,6 +697,7 @@ if __name__ == "__main__":
     test_known_error_shell_triggers_fallback_for_xiaohongshu()
     test_known_error_shell_triggers_fallback_for_douyin_empty_body()
     test_known_error_shell_triggers_fallback_for_pinduoduo_shell()
+    test_external_discovery_adds_extra_suffixes_for_xiaohongshu()
     test_browser_session_fallback_rejects_wrong_page()
     test_browser_session_fallback_rejects_shell_without_query_overlap()
     test_browser_auth_audit_prefers_authenticated_safari()

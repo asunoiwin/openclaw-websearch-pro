@@ -15,11 +15,11 @@
     },
     "xiaohongshu.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "登录态存在但搜索 DOM 仍是壳层，通用浏览器回退不足。"
+      "reason": "登录态存在但搜索 DOM 仍是壳层，优先做外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
     },
     "douyin.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "页面重 JS 且正文不可读，适合专属适配器或第三方项目集成。"
+      "reason": "页面重 JS 且正文不可读，优先做外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
     },
     "bilibili.com": {
       "mode": "yt_dlp_or_custom_extract",

@@ -205,6 +205,8 @@ Current specialized paths include:
   - can use `gallery-dl` to extract structured post metadata from real status pages
 - X / Twitter status URLs
   - can use official `oEmbed` for public text posts without a browser session
+- Xiaohongshu / Douyin
+  - when in-site pages are shells, error pages, or unreadable JS apps, external discovery now biases toward `GitHub / skill / MCP / tutorial / automation` results instead of generic platform blurbs
 - Search result pages
   - Google
   - Baidu

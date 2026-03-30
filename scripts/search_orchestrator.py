@@ -22,6 +22,7 @@ HERE = Path(__file__).resolve().parent
 BRIDGE = HERE / "browser_session_bridge.py"
 DISTILL = HERE / "web_content_distill.py"
 YT_DLP = ["python3", "-m", "yt_dlp"]
+GALLERY_DL = ["python3", "-m", "gallery_dl"]
 READER_FIRST_DOMAINS = {
     "github.com",
     "www.github.com",
@@ -158,6 +159,9 @@ YTDLP_COOKIE_BROWSER = {
     "x.com": "chrome",
     "twitter.com": "chrome",
 }
+GALLERY_DL_SUPPORTED_ROOTS = {
+    "weibo.com",
+}
 
 
 @dataclass
@@ -261,6 +265,19 @@ def yt_dlp_available() -> bool:
     return proc.returncode == 0
 
 
+def gallery_dl_available() -> bool:
+    try:
+        proc = subprocess.run(
+            GALLERY_DL + ["--version"],
+            text=True,
+            capture_output=True,
+            timeout=8,
+        )
+    except Exception:
+        return False
+    return proc.returncode == 0
+
+
 def looks_like_search_or_shell_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     path = parsed.path.lower()
@@ -340,6 +357,69 @@ def extract_yt_dlp_special(url: str, query: str) -> Dict | None:
         "quality": "high" if len(summary) >= 2 else "medium",
         "uploader": uploader,
         "applied_rules": rules,
+    }
+
+
+def extract_gallery_dl_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root not in GALLERY_DL_SUPPORTED_ROOTS:
+        return None
+    if looks_like_search_or_shell_url(url):
+        return None
+    if not gallery_dl_available():
+        return None
+    try:
+        proc = subprocess.run(
+            GALLERY_DL + ["-j", url],
+            text=True,
+            capture_output=True,
+            timeout=35,
+        )
+    except Exception:
+        return None
+    if proc.returncode != 0 or not clean(proc.stdout):
+        return None
+    try:
+        payload = json.loads(proc.stdout)
+    except Exception:
+        return None
+    if not payload or not isinstance(payload, list):
+        return None
+    meta = payload[0][1] if isinstance(payload[0], list) and len(payload[0]) > 1 else {}
+    if not isinstance(meta, dict):
+        return None
+    text_raw = clean(meta.get("text_raw", ""))
+    user = meta.get("user") or {}
+    author = clean(user.get("screen_name", "") if isinstance(user, dict) else "")
+    stats = []
+    for field in ("comments_count", "attitudes_count", "reposts_count"):
+        value = meta.get(field)
+        if value not in (None, "", 0):
+            stats.append(f"{field}={value}")
+    text = " ".join(part for part in [text_raw, author, " ".join(stats)] if part)
+    summary = summarize_text(text, query)
+    if not summary and text_raw:
+        summary = [text_raw[:280]]
+    if not summary:
+        return None
+    sections = []
+    if author:
+        sections.append({"level": "meta", "text": f"author: {author}"})
+    if stats:
+        sections.append({"level": "meta", "text": ", ".join(stats)})
+    source = clean(meta.get("source", ""))
+    if source:
+        sections.append({"level": "meta", "text": f"source: {source}"})
+    return {
+        "url": url,
+        "fetch_mode": "gallery_dl",
+        "title": author or clean(parsed.netloc),
+        "summary": summary[:5],
+        "sections": sections[:8],
+        "links": [],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["gallery_dl_adapter"],
     }
 
 
@@ -647,6 +727,38 @@ def extract_reddit_special(url: str, query: str) -> Dict | None:
     }
 
 
+def extract_jd_item_special(url: str, raw: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    if "item.jd.com" not in domain:
+        return None
+    if not parsed.path.lower().endswith(".html"):
+        return None
+    title_match = re.search(r"<title>(.*?)</title>", raw, re.I | re.S)
+    desc_match = re.search(r'<meta name="description" content="(.*?)"', raw, re.I | re.S)
+    title = clean(re.sub(r"<[^>]+>", " ", title_match.group(1))) if title_match else ""
+    desc = clean(html.unescape(desc_match.group(1))) if desc_match else ""
+    if query_overlap_score(" ".join([title, desc]), query) < 1:
+        return None
+    summary = []
+    if title:
+        summary.append(title)
+    if desc:
+        summary.append(desc[:220])
+    if not summary:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "jd_item_meta",
+        "title": title or "JD Item",
+        "summary": summary[:5],
+        "sections": [],
+        "links": [],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["jd_item_meta"],
+    }
+
+
 def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower()
@@ -727,6 +839,22 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
         for match in re.finditer(r'<a[^>]*href="(?P<href>/(?:models|datasets|spaces)/[^"]+)"[^>]*>(?P<title>.*?)</a>', raw, re.S):
             items.append((match.group("title"), urllib.parse.urljoin("https://huggingface.co", match.group("href")), ""))
         return mk("Hugging Face Search", items, "search_results")
+
+    if "bilibili.com" in domain and any(token in path for token in ("/all", "/video", "/bangumi")):
+        items = []
+        pattern = re.compile(
+            r'<a href="(?P<href>//www\.bilibili\.com/video/BV[0-9A-Za-z]+/?)"[^>]*>.*?<img[^>]*alt="(?P<title>[^"]+)"',
+            re.S,
+        )
+        for match in pattern.finditer(raw):
+            href = urllib.parse.urljoin("https:", html.unescape(match.group("href")))
+            title = clean(match.group("title"))
+            if title and href:
+                items.append((title, href, ""))
+        result = mk("Bilibili Search", items, "bilibili_search_cards")
+        if result:
+            result["applied_rules"] = ["search_results_extraction", "bilibili_search_cards"]
+        return result
 
     if "kubernetes.io" in domain and any(token in path for token in ("/search", "/docs/search")):
         items = []
@@ -947,6 +1075,46 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                 item.score = score_result(item, query)
                 collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)
+    deep_hits = []
+    for item in collected[:5]:
+        item_domain = urllib.parse.urlparse(item.url).netloc.lower()
+        if root_domain(item_domain) != root:
+            continue
+        if looks_like_search_or_shell_url(item.url):
+            continue
+        nested = deep_extract(item.url, query, allow_fallback=False)
+        if not nested.get("summary"):
+            continue
+        if nested.get("quality") == "low":
+            continue
+        if query_overlap_score(" ".join(nested.get("summary") or []), query) < 1:
+            continue
+        deep_hits.append((item, nested))
+        if len(deep_hits) >= 2:
+            break
+    if deep_hits:
+        summary = []
+        links = []
+        sections = []
+        for item, nested in deep_hits:
+            nested_summary = nested.get("summary") or []
+            if not nested_summary:
+                continue
+            summary.append(nested_summary[0])
+            links.append({"text": nested.get("title") or item.title, "href": item.url})
+            sections.append({"level": "follow", "text": nested.get("title") or item.title})
+        if summary:
+            return {
+                "url": url,
+                "fetch_mode": "external_discovery_deep_fallback",
+                "title": clean(root or domain),
+                "summary": summary[:5],
+                "sections": sections[:10],
+                "links": links[:10],
+                "quality": "high" if len(summary) >= 2 else "medium",
+                "source_query": queries[:4],
+                "applied_rules": ["quality_gating", "external_discovery_fallback", "followup_refinement"],
+            }
     useful = collected[:5]
     if not useful:
         return None
@@ -1279,7 +1447,12 @@ def normalize_reader_text(text: str) -> Tuple[str, str]:
 
 
 def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
-    special = extract_github_special(url, query) or extract_reddit_special(url, query) or extract_yt_dlp_special(url, query)
+    special = (
+        extract_github_special(url, query)
+        or extract_reddit_special(url, query)
+        or extract_yt_dlp_special(url, query)
+        or extract_gallery_dl_special(url, query)
+    )
     if special:
         return special
     domain = urllib.parse.urlparse(url).netloc.lower()
@@ -1292,6 +1465,9 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     search_special = extract_search_page_special(url, raw, query)
     if search_special:
         return search_special
+    jd_special = extract_jd_item_special(url, raw, query)
+    if jd_special:
+        return jd_special
     if is_low_signal_text(raw):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:

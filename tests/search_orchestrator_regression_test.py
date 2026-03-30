@@ -47,6 +47,28 @@ def test_youtube_search_page_extractor():
     assert len(result["links"]) >= 1
 
 
+def test_bilibili_search_card_extractor():
+    html = """
+    <div class="bili-video-card__wrap">
+      <a href="//www.bilibili.com/video/BV1abc123456/" target="_blank">
+        <div class="bili-video-card__image">
+          <img alt="OpenClaw 保姆级安装教程">
+        </div>
+      </a>
+      <a href="//www.bilibili.com/video/BV9xyz654321/" target="_blank">
+        <div class="bili-video-card__image">
+          <img alt="OpenClaw Skills 实战">
+        </div>
+      </a>
+    </div>
+    """
+    result = module.extract_search_page_special("https://search.bilibili.com/all?keyword=openclaw", html, "openclaw")
+    assert result is not None
+    assert result["fetch_mode"] == "bilibili_search_cards"
+    assert "bilibili_search_cards" in result["applied_rules"]
+    assert len(result["links"]) >= 2
+
+
 def test_domain_search_fallback_for_blocked_page():
     original = module.search_engine
 
@@ -193,6 +215,88 @@ def test_yt_dlp_adapter_for_content_page():
     assert result is not None
     assert result["fetch_mode"] == "yt_dlp"
     assert "yt_dlp_adapter" in result["applied_rules"]
+
+
+def test_external_discovery_deep_fallback_prefers_nested_content():
+    original_search = module.search_engine
+    original_deep = module.deep_extract
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult("Weibo post", "https://www.weibo.com/123/abcdef", "OpenClaw release", engine, variant, site_focus),
+            module.SearchResult("Weibo search", "https://s.weibo.com/weibo/openclaw", "Search", engine, variant, site_focus),
+        ]
+
+    def fake_deep_extract(url, query, allow_fallback=True):
+        if "www.weibo.com/123/abcdef" in url:
+            return {
+                "url": url,
+                "fetch_mode": "yt_dlp",
+                "title": "OpenClaw 发布",
+                "summary": ["OpenClaw 2026.3.22 版本发布，ClawHub 插件市场上线"],
+                "sections": [],
+                "links": [],
+                "quality": "medium",
+                "applied_rules": ["yt_dlp_adapter"],
+            }
+        return {"url": url, "fetch_mode": "direct", "summary": [], "quality": "low"}
+
+    module.search_engine = fake_search_engine
+    module.deep_extract = fake_deep_extract
+    try:
+        result = module.extract_external_discovery_fallback("https://s.weibo.com/weibo/openclaw", "OpenClaw 插件市场")
+    finally:
+        module.search_engine = original_search
+        module.deep_extract = original_deep
+
+    assert result is not None
+    assert result["fetch_mode"] == "external_discovery_deep_fallback"
+    assert "followup_refinement" in result["applied_rules"]
+
+
+def test_gallery_dl_adapter_for_weibo_status():
+    original_run = module.subprocess.run
+    original_available = module.gallery_dl_available
+
+    class FakeProc:
+        def __init__(self, stdout="", returncode=0):
+            self.stdout = stdout
+            self.stderr = ""
+            self.returncode = returncode
+
+    def fake_run(cmd, text=True, capture_output=True, timeout=35):
+        if cmd[:3] == ["python3", "-m", "gallery_dl"] and "-j" in cmd:
+            return FakeProc(
+                stdout='[[2, {"text_raw":"OpenClaw 2026.3.22 版本发布 ClawHub 插件市场上线","comments_count":16,"attitudes_count":89,"reposts_count":13,"source":"iPhone 15 Pro","user":{"screen_name":"OpenClaw官方微博"}}]]'
+            )
+        if cmd[:3] == ["python3", "-m", "gallery_dl"] and "--version" in cmd:
+            return FakeProc(stdout="1.31.10")
+        raise AssertionError(cmd)
+
+    module.subprocess.run = fake_run
+    module.gallery_dl_available = lambda: True
+    try:
+        result = module.extract_gallery_dl_special("https://www.weibo.com/8343600249/QxsidtsPf", "OpenClaw 插件市场")
+    finally:
+        module.subprocess.run = original_run
+        module.gallery_dl_available = original_available
+
+    assert result is not None
+    assert result["fetch_mode"] == "gallery_dl"
+    assert "gallery_dl_adapter" in result["applied_rules"]
+
+
+def test_jd_item_meta_extractor():
+    html = """
+    <html><head>
+      <title>《OpenClaw 实战指南》(作者名)【摘要 书评 试读】- 京东图书</title>
+      <meta name="description" content="京东JD.COM图书频道为您提供《OpenClaw 实战指南》在线选购，本书作者：，出版社：机械工业出版社。">
+    </head><body></body></html>
+    """
+    result = module.extract_jd_item_special("https://item.jd.com/123456.html", html, "OpenClaw 实战指南")
+    assert result is not None
+    assert result["fetch_mode"] == "jd_item_meta"
+    assert "jd_item_meta" in result["applied_rules"]
 
 
 def test_browser_session_fallback_rejects_wrong_page():

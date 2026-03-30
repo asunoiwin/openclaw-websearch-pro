@@ -22,6 +22,7 @@
 - 插件自带浏览器桥和网页蒸馏脚本，不依赖 `workspace/scripts` 才能工作
 - 内置站点专属结果页提取器
 - 内置可选的 `yt-dlp` 二级内容页适配器，优先处理 `Bilibili / Douyin / XiaoHongShu / Weibo / X` 这类内容页
+- 内置可选的 `gallery-dl` 内容页适配器，优先处理 `Weibo` 这类已有成熟提取器的平台
 - 当目标页被挑战、拦截或质量过低时，会自动做域名限定再搜索并合成结构化结果
 
 ## 插件内脚本
@@ -188,6 +189,7 @@
 - `reader`
 - `direct`
 - `yt_dlp`
+- `gallery_dl`
 
 ## 站点专属提取
 
@@ -199,6 +201,10 @@
   - 优先抓原始 README / 原始文件内容
 - Reddit 讨论页
   - 优先尝试 `.json` 结构化提取
+- Bilibili 搜索页
+  - 直接从 SSR HTML 中抽视频卡片和二级视频链接
+- Weibo 状态页
+  - 当命中真实微博状态页时，可通过 `gallery-dl` 提取结构化内容
 - 搜索结果页
   - Google
   - Baidu

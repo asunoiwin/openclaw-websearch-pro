@@ -26,8 +26,8 @@
       "reason": "二级视频页可用 yt-dlp 稳定提取元数据，优先于整页摘要。"
     },
     "weibo.com": {
-      "mode": "external_or_custom_adapter",
-      "reason": "匿名/访客系统干扰明显，适合专属抓取器。"
+      "mode": "gallery_or_external_adapter",
+      "reason": "匿名/访客系统干扰明显，但具体微博状态页可由 gallery-dl 提取结构化内容。"
     },
     "reddit.com": {
       "mode": "domain_or_json_adapter",

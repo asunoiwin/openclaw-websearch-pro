@@ -31,6 +31,7 @@
 - `scripts/browser_session_bridge.py`
 - `scripts/browser_auth_audit.py`
 - `scripts/web_content_distill.py`
+- `src/site-adapter-policy.json`
 
 这样做的目的：
 
@@ -264,6 +265,47 @@ python3 scripts/browser_auth_audit.py data/browser_auth_sites.json
 - 登录态
 - 登录态原因
 - 如果是 Safari，还会附带可提取正文结果
+
+### 测试窗口关闭规则
+
+浏览器测试现在遵循一条强制规则：
+
+1. 测试时新开页面
+2. 提取结束后自动关闭刚打开的测试页
+3. 不再保留一堆临时测试窗口
+
+对应命令：
+
+```bash
+python3 scripts/browser_session_bridge.py close-front safari
+```
+
+默认 `audit` 已经内置自动关闭，不需要额外手动调用。
+
+## 站点适配层策略
+
+插件现在带一个站点适配层策略文件：
+
+- `src/site-adapter-policy.json`
+
+这个文件的作用不是直接执行抓取，而是定义：
+
+- 哪些站点继续走通用回退
+- 哪些站点值得接专属提取器
+- 哪些站点后续适合接 GitHub 上现成的 Python 项目
+
+当前策略大意：
+
+- `taobao.com`
+  - 优先做专属搜索结果提取
+- `jd.com`
+  - 先走域内回退，后续再补专属器
+- `xiaohongshu.com / douyin.com / weibo.com`
+  - 当前优先站外发现，后续再补专属适配器
+- `reddit.com`
+  - 搜索页先回退，帖子页继续优先 JSON
+- `gitlab.com`
+  - 登录稳定前优先站外发现
 
 这条回退不是简单“把浏览器页读一遍”，而是：
 

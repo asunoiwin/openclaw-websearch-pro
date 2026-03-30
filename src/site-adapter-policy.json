@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "notes": [
+    "站点适配层用于承载通用回退之外的专属提取器、第三方 Python 爬虫集成或浏览器专属解析器。",
+    "只有在通用路径已经证明不足时，才为该站点增加专属适配。"
+  ],
+  "sites": {
+    "taobao.com": {
+      "mode": "custom_extract_preferred",
+      "reason": "搜索页存在真实商品结果，但正文较长，适合抽卡片而不是做整页摘要。"
+    },
+    "jd.com": {
+      "mode": "domain_or_custom_extract",
+      "reason": "浏览器页常返回空正文或帮助链接，适合域内重搜或专属结果提取器。"
+    },
+    "xiaohongshu.com": {
+      "mode": "external_or_custom_adapter",
+      "reason": "登录态存在但搜索 DOM 仍是壳层，通用浏览器回退不足。"
+    },
+    "douyin.com": {
+      "mode": "external_or_custom_adapter",
+      "reason": "页面重 JS 且正文不可读，适合专属适配器或第三方项目集成。"
+    },
+    "weibo.com": {
+      "mode": "external_or_custom_adapter",
+      "reason": "匿名/访客系统干扰明显，适合专属抓取器。"
+    },
+    "reddit.com": {
+      "mode": "domain_or_json_adapter",
+      "reason": "帖子页可走 JSON，但搜索页易被 403，适合细分适配。"
+    },
+    "gitlab.com": {
+      "mode": "external_until_authenticated",
+      "reason": "未登录或验证时优先站外发现，登录链稳定后再接专属提取。"
+    },
+    "producthunt.com": {
+      "mode": "domain_deep_fallback",
+      "reason": "当前域内深跟进已经可用，专属器不是最高优先级。"
+    }
+  }
+}

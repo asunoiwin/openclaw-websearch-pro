@@ -275,6 +275,29 @@ end tell
     return {"ok": True, "browser": which, "url": url}
 
 
+def close_front(which: str) -> dict:
+    if which == "chrome":
+        script = r'''
+tell application "Google Chrome"
+  if it is not running then return "chrome_not_running"
+  if (count of windows) = 0 then return "chrome_no_window"
+  close front window
+  return "ok"
+end tell
+'''
+    else:
+        script = r'''
+tell application "Safari"
+  if it is not running then return "safari_not_running"
+  if (count of windows) = 0 then return "safari_no_window"
+  if (count of documents) = 0 then return "safari_no_document"
+  close front document
+  return "ok"
+end tell
+'''
+    return {"ok": run_osascript(script) == "ok", "browser": which}
+
+
 def wait_for_page(which: str, url: str, timeout: float = 8.0) -> dict:
     target_root = root_domain(url)
     deadline = time.time() + timeout
@@ -309,12 +332,16 @@ def audit_page(which: str, url: str) -> dict:
                 payload["extract_error"] = str(exc)
         else:
             payload["extract_error"] = "target_page_not_reached"
+    try:
+        payload["closed_temp_page"] = close_front(which)
+    except Exception as exc:
+        payload["close_error"] = str(exc)
     return payload
 
 
 def main() -> int:
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "usage: browser_session_bridge.py <status|status-all|extract|open|search|audit> [args...]"}, ensure_ascii=False))
+        print(json.dumps({"error": "usage: browser_session_bridge.py <status|status-all|extract|open|close-front|search|audit> [args...]"}, ensure_ascii=False))
         return 1
 
     cmd = sys.argv[1]
@@ -342,6 +369,12 @@ def main() -> int:
             print(json.dumps({"error": "usage: browser_session_bridge.py open <browser> <url>"}, ensure_ascii=False))
             return 1
         print(json.dumps(open_url(browser, sys.argv[3]), ensure_ascii=False))
+        return 0
+
+    if cmd == "close-front":
+        if browser == "auto":
+            browser = "safari"
+        print(json.dumps(close_front(browser), ensure_ascii=False))
         return 0
 
     if cmd == "audit":

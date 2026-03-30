@@ -31,6 +31,7 @@ The plugin now ships with:
 - `scripts/browser_session_bridge.py`
 - `scripts/browser_auth_audit.py`
 - `scripts/web_content_distill.py`
+- `src/site-adapter-policy.json`
 
 This keeps the plugin portable and avoids hidden runtime dependencies on `workspace/scripts`.
 
@@ -257,6 +258,47 @@ It reports, per site:
 - auth state
 - auth reason
 - and, for Safari, extracted content when available
+
+### Temporary window cleanup rule
+
+Browser testing now follows a strict cleanup rule:
+
+1. open a dedicated temporary page for the test
+2. extract what is needed
+3. close that temporary page immediately after the audit
+
+Command:
+
+```bash
+python3 scripts/browser_session_bridge.py close-front safari
+```
+
+The `audit` command already performs this cleanup automatically.
+
+## Site adapter policy
+
+The plugin now ships a site adapter policy file:
+
+- `src/site-adapter-policy.json`
+
+This file defines which sites should:
+
+- keep using generic fallback
+- move to a custom extractor
+- or later integrate a dedicated Python project from GitHub
+
+Current direction:
+
+- `taobao.com`
+  - custom search-result extraction preferred
+- `jd.com`
+  - domain fallback first, custom extractor later
+- `xiaohongshu.com / douyin.com / weibo.com`
+  - external discovery first, custom adapter later
+- `reddit.com`
+  - search fallback first, JSON path for posts
+- `gitlab.com`
+  - external fallback until authenticated extraction is stable
 
 ## External discovery fallback
 

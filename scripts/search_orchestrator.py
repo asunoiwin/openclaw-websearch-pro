@@ -113,6 +113,8 @@ SITE_QUERY_SUFFIXES = {
     "yangkeduo": ["教程", "安装", "购买"],
 }
 EXTERNAL_DISCOVERY_BRANDS = {
+    "taobao.com": "淘宝 taobao",
+    "tmall.com": "天猫 tmall",
     "xiaohongshu.com": "小红书 xiaohongshu",
     "douyin.com": "抖音 douyin",
     "weibo.com": "微博 weibo",
@@ -237,6 +239,9 @@ def browser_assisted_extract(url: str, query: str) -> Dict | None:
     title = clean(payload.get("title", ""))
     if looks_like_login_shell(title, text):
         return None
+    site = payload.get("site") or infer_site_from_url(payload_url or url)
+    if not has_site_specific_result_signal(site, text, query):
+        return None
     summary = summarize_browser_text(text, query, title, payload_url or url)
     if not summary or looks_like_generic_site_blurb(title, summary, query):
         return None
@@ -251,6 +256,7 @@ def browser_assisted_extract(url: str, query: str) -> Dict | None:
         "links": payload.get("links", [])[:20],
         "quality": "high" if len(summary) >= 2 else "medium",
         "browser": browser,
+        "site": site,
         "auth_state": audit.get("auth_state"),
         "auth_reason": audit.get("auth_reason"),
         "applied_rules": ["browser_session_fallback", "browser_auth_audit"],
@@ -307,6 +313,36 @@ def audit_browser_session(url: str) -> Dict | None:
             "extract": page_status,
         }
     return None
+
+
+def infer_site_from_url(url: str) -> str:
+    domain = urllib.parse.urlparse(url).netloc.lower()
+    root = root_domain(domain)
+    if "taobao.com" in root or "tmall.com" in root:
+        return "taobao"
+    if "jd.com" in root:
+        return "jd"
+    if "yangkeduo.com" in root:
+        return "pinduoduo"
+    if "douyin.com" in root:
+        return "douyin"
+    if "xiaohongshu.com" in root:
+        return "xiaohongshu"
+    if "bilibili.com" in root:
+        return "bilibili"
+    return root
+
+
+def has_site_specific_result_signal(site: str, text: str, query: str) -> bool:
+    lowered = clean(text).lower()
+    if site in {"taobao", "jd", "pinduoduo"}:
+        markers = ["商品", "店铺", "销量", "评价", "价格", "人付款", "￥", "¥", "领券"]
+        if "加载中" in text and sum(1 for marker in markers if marker in text) < 2:
+            return False
+        return sum(1 for marker in markers if marker in text) >= 1
+    if site in {"douyin", "xiaohongshu", "bilibili"}:
+        return query_overlap_score(text, query) >= 1 or any(marker in text for marker in ["教程", "视频", "笔记", "合集"])
+    return True
 
 
 def summarize_browser_text(text: str, query: str, title: str, url: str) -> List[str]:

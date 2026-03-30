@@ -132,6 +132,13 @@ ACTIONABLE_DISCOVERY_DOMAINS = {
     "zhihu.com",
     "bilibili.com",
 }
+COMMERCE_ROOTS = {
+    "taobao.com",
+    "tmall.com",
+    "jd.com",
+    "yangkeduo.com",
+    "pinduoduo.com",
+}
 EXTERNAL_DISCOVERY_BRANDS = {
     "taobao.com": "淘宝 taobao",
     "tmall.com": "天猫 tmall",
@@ -231,6 +238,46 @@ def actionable_discovery_bonus(url: str, target_root: str) -> float:
     if item_root == target_root:
         return 0.15
     return 0.0
+
+
+def commerce_root_for_url(url: str) -> str:
+    return root_domain(urllib.parse.urlparse(url).netloc.lower())
+
+
+def extract_commerce_signals(text: str) -> List[str]:
+    sample = clean(text)
+    signals: List[str] = []
+    patterns = [
+        r"(?:¥|￥)\s?\d+(?:\.\d+)?",
+        r"\d+(?:\.\d+)?万?\+?人付款",
+        r"\d+(?:\.\d+)?万?\+?已售",
+        r"\d+(?:\.\d+)?万?\+?销量",
+        r"\d+(?:,\d+)?条评价",
+        r"\d+(?:\.\d+)?分",
+        r"券后\s?(?:¥|￥)\s?\d+(?:\.\d+)?",
+        r"(?:官方旗舰店|旗舰店|专营店|自营)",
+        r"(?:包邮|满减|优惠券|领券)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, sample, re.I)
+        if match:
+            value = clean(match.group(0))
+            if value and value not in signals:
+                signals.append(value)
+    return signals[:5]
+
+
+def format_commerce_line(title: str, snippet: str, url: str) -> str:
+    title = clean(title)
+    snippet = clean(snippet)
+    combined = " ".join(part for part in (title, snippet) if part)
+    signals = extract_commerce_signals(combined)
+    if not signals:
+        return f"{title}: {snippet[:180]}".strip(": ") if snippet else title
+    signal_text = " | ".join(signals)
+    if title:
+        return f"{title} | {signal_text}"
+    return signal_text
 
 
 def fallback_order_for_url(url: str) -> Tuple[str, ...]:
@@ -917,6 +964,7 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
     def mk(title: str, items: List[Tuple[str, str, str]], mode: str) -> Dict | None:
         cleaned = []
         seen = set()
+        commerce_root = root_domain(domain)
         for item_title, item_url, item_snippet in items:
             item_title = clean(re.sub(r"<[^>]+>", " ", item_title))
             item_url = clean(html.unescape(item_url))
@@ -936,11 +984,13 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
         links = []
         for item_title, item_url, item_snippet in cleaned:
             line = item_title
-            if item_snippet:
+            if commerce_root in COMMERCE_ROOTS:
+                line = format_commerce_line(item_title, item_snippet, item_url)
+            elif item_snippet:
                 line = f"{item_title}: {item_snippet[:180]}"
             summary.append(line)
             links.append({"text": item_title, "href": item_url})
-        quality = "high" if len(cleaned) >= 4 else "medium"
+        quality = "high" if len(cleaned) >= 4 or (commerce_root in COMMERCE_ROOTS and len(cleaned) >= 2) else "medium"
         return {
             "url": url,
             "fetch_mode": mode,
@@ -1141,6 +1191,7 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
             break
     if len(useful) < 1:
         return None
+    commerce_root = root or domain
     useful.sort(key=lambda item: (is_homepage_like(item.url), -url_path_depth(item.url), -item.score))
     deep_hits = []
     if follow_depth:
@@ -1185,8 +1236,9 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
         "fetch_mode": "domain_search_fallback",
         "title": clean(domain),
         "summary": [
-            f"{item.title}: {item.snippet[:180]}".strip(": ")
-            if item.snippet else item.title
+            format_commerce_line(item.title, item.snippet, item.url)
+            if commerce_root in COMMERCE_ROOTS else
+            (f"{item.title}: {item.snippet[:180]}".strip(": ") if item.snippet else item.title)
             for item in useful
         ],
         "sections": [{"level": "results", "text": item.title} for item in useful],
@@ -1270,8 +1322,9 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
         "fetch_mode": "external_discovery_fallback",
         "title": clean(root or domain),
         "summary": [
-            f"{item.title}: {item.snippet[:180]}".strip(": ")
-            if item.snippet else item.title
+            format_commerce_line(item.title, item.snippet, item.url)
+            if root in COMMERCE_ROOTS else
+            (f"{item.title}: {item.snippet[:180]}".strip(": ") if item.snippet else item.title)
             for item in useful
         ],
         "sections": [{"level": "results", "text": item.title} for item in useful],

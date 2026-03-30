@@ -703,6 +703,50 @@ def test_external_discovery_fallback_for_chinese_social_sites():
     assert "external_discovery_fallback" in result["applied_rules"]
 
 
+def test_commerce_line_formatting_extracts_price_and_sales():
+    line = module.format_commerce_line(
+        "OpenClaw 实战指南",
+        "券后￥39.80 已售1234件 官方旗舰店 包邮",
+        "https://item.jd.com/123.html",
+    )
+    assert "￥39.80" in line or "39.80" in line
+    assert "官方旗舰店" in line
+
+
+def test_domain_search_fallback_formats_commerce_results():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "OpenClaw 实战指南",
+                "https://item.jd.com/123.html",
+                "券后￥39.80 1234条评价 官方旗舰店 包邮",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "OpenClaw 龙虾教程",
+                "https://item.jd.com/456.html",
+                "￥59.00 已售2000件 自营",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback("https://search.jd.com/Search?keyword=openclaw", "openclaw")
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] in {"domain_search_fallback", "domain_search_deep_fallback"}
+    assert any("￥39.80" in line or "39.80" in line for line in result["summary"])
+
+
 
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
@@ -727,4 +771,6 @@ if __name__ == "__main__":
     test_browser_auth_audit_rejects_expired_session()
     test_generic_search_shell_extraction_from_sections()
     test_external_discovery_fallback_for_chinese_social_sites()
+    test_commerce_line_formatting_extracts_price_and_sales()
+    test_domain_search_fallback_formats_commerce_results()
     print("search orchestrator regression tests passed")

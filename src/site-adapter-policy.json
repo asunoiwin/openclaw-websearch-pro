@@ -29,6 +29,10 @@
       "mode": "gallery_or_external_adapter",
       "reason": "匿名/访客系统干扰明显，但具体微博状态页可由 gallery-dl 提取结构化内容。"
     },
+    "x.com": {
+      "mode": "oembed_or_external_adapter",
+      "reason": "纯文本推文适合通过官方 oEmbed 取正文，避免登录墙和 JS 壳页；更复杂内容再回退外部发现。"
+    },
     "reddit.com": {
       "mode": "gallery_or_yt_dlp_or_domain_adapter",
       "reason": "公开搜索页常被 403 或挑战页挡住；讨论帖正文优先走 gallery-dl，外链/媒体帖可走 yt-dlp + 浏览器 cookies。"

@@ -23,6 +23,7 @@
 - 内置站点专属结果页提取器
 - 内置可选的 `yt-dlp` 二级内容页适配器，优先处理 `Bilibili / Douyin / XiaoHongShu / Weibo / X / Reddit` 这类内容页
 - 内置可选的 `gallery-dl` 内容页适配器，优先处理 `Weibo / Reddit` 这类已有成熟提取器的平台
+- 内置 `X/Twitter oEmbed` 文本帖适配器，优先处理公开文本推文
 - 当目标页被挑战、拦截或质量过低时，会自动做域名限定再搜索并合成结构化结果
 
 ## 插件内脚本
@@ -207,6 +208,8 @@
   - 直接从 SSR HTML 中抽视频卡片和二级视频链接
 - Weibo 状态页
   - 当命中真实微博状态页时，可通过 `gallery-dl` 提取结构化内容
+- X / Twitter 状态页
+  - 纯文本推文优先走官方 `oEmbed`，不依赖浏览器登录态
 - 搜索结果页
   - Google
   - Baidu

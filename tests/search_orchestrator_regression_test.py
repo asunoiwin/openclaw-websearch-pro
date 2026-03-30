@@ -360,6 +360,25 @@ def test_gallery_dl_adapter_for_reddit_submission():
     assert result["links"][0]["url"] == "https://example.com/details"
 
 
+def test_twitter_oembed_adapter_for_text_status():
+    original_try_fetch = module.try_fetch
+
+    def fake_try_fetch(url, timeout=15):
+        assert "publish.twitter.com/oembed" in url
+        return '{"author_name":"jack","author_url":"https://twitter.com/jack","html":"<blockquote class=\\"twitter-tweet\\"><p lang=\\"en\\" dir=\\"ltr\\">just setting up my twttr</p>&mdash; jack (@jack) <a href=\\"https://twitter.com/jack/status/20\\">March 21, 2006</a></blockquote>"}'
+
+    module.try_fetch = fake_try_fetch
+    try:
+        result = module.extract_twitter_oembed_special("https://x.com/jack/status/20", "twttr")
+    finally:
+        module.try_fetch = original_try_fetch
+
+    assert result is not None
+    assert result["fetch_mode"] == "twitter_oembed"
+    assert "twitter_oembed" in result["applied_rules"]
+    assert result["summary"][0].startswith("just setting up my twttr")
+
+
 def test_jd_item_meta_extractor():
     html = """
     <html><head>
@@ -559,6 +578,7 @@ if __name__ == "__main__":
     test_yt_dlp_adapter_for_content_page()
     test_yt_dlp_adapter_for_reddit_content_page()
     test_gallery_dl_adapter_for_reddit_submission()
+    test_twitter_oembed_adapter_for_text_status()
     test_browser_session_fallback_rejects_wrong_page()
     test_browser_session_fallback_rejects_shell_without_query_overlap()
     test_browser_auth_audit_prefers_authenticated_safari()

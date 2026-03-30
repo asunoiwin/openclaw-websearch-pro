@@ -475,6 +475,50 @@ def extract_gallery_dl_special(url: str, query: str) -> Dict | None:
     }
 
 
+def extract_twitter_oembed_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root not in {"x.com", "twitter.com"}:
+        return None
+    path = parsed.path.lower()
+    if "/status/" not in path:
+        return None
+    endpoint = "https://publish.twitter.com/oembed?omit_script=1&url=" + urllib.parse.quote(url, safe="")
+    raw = try_fetch(endpoint, timeout=15)
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except Exception:
+        return None
+    html_snippet = payload.get("html", "") or ""
+    author = clean(payload.get("author_name", ""))
+    author_url = clean(payload.get("author_url", ""))
+    text_match = re.search(r"<p[^>]*>(.*?)</p>", html_snippet, flags=re.S | re.I)
+    if not text_match:
+        return None
+    text = clean(re.sub(r"<[^>]+>", " ", text_match.group(1)))
+    if not text:
+        return None
+    summary = summarize_text(" ".join(part for part in [text, author] if part), query)
+    if not summary:
+        summary = [text[:280]]
+    sections = []
+    if author:
+        sections.append({"level": "meta", "text": f"author: {author}"})
+    links = [{"label": "author", "url": author_url}] if author_url.startswith("http") else []
+    return {
+        "url": url,
+        "fetch_mode": "twitter_oembed",
+        "title": author or clean(parsed.netloc),
+        "summary": summary[:5],
+        "sections": sections[:8],
+        "links": links[:10],
+        "quality": "medium" if summary else "low",
+        "applied_rules": ["twitter_oembed"],
+    }
+
+
 def try_fetch(url: str, timeout: int = 15) -> str:
     try:
         return http_get(url, timeout=timeout)
@@ -1502,6 +1546,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     special = (
         extract_github_special(url, query)
         or extract_reddit_special(url, query)
+        or extract_twitter_oembed_special(url, query)
         or extract_gallery_dl_special(url, query)
         or extract_yt_dlp_special(url, query)
     )

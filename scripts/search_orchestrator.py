@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import re
 import subprocess
 import sys
@@ -16,9 +17,11 @@ from typing import List, Dict, Tuple
 
 USER_AGENT = "Mozilla/5.0 OpenClaw Search Orchestrator"
 MAX_TEXT = 5000
+ENABLE_BROWSER_FALLBACK = os.environ.get("OPENCLAW_SEARCH_ENABLE_BROWSER_FALLBACK", "").strip() == "1"
 HERE = Path(__file__).resolve().parent
 BRIDGE = HERE / "browser_session_bridge.py"
 DISTILL = HERE / "web_content_distill.py"
+YT_DLP = ["python3", "-m", "yt_dlp"]
 READER_FIRST_DOMAINS = {
     "github.com",
     "www.github.com",
@@ -139,6 +142,22 @@ SITE_FALLBACK_ORDER = {
     "jd.com": ("domain", "external", "browser"),
     "yangkeduo.com": ("external", "domain", "browser"),
 }
+YTDLP_SUPPORTED_ROOTS = {
+    "bilibili.com",
+    "douyin.com",
+    "xiaohongshu.com",
+    "weibo.com",
+    "x.com",
+    "twitter.com",
+}
+YTDLP_COOKIE_BROWSER = {
+    "bilibili.com": "chrome",
+    "douyin.com": "chrome",
+    "xiaohongshu.com": "chrome",
+    "weibo.com": "chrome",
+    "x.com": "chrome",
+    "twitter.com": "chrome",
+}
 
 
 @dataclass
@@ -227,6 +246,101 @@ def fetch_with_reader_fallback(url: str) -> Tuple[str, str]:
         return http_get(reader_url), "reader"
     except Exception:
         return "", "unavailable"
+
+
+def yt_dlp_available() -> bool:
+    try:
+        proc = subprocess.run(
+            YT_DLP + ["--version"],
+            text=True,
+            capture_output=True,
+            timeout=8,
+        )
+    except Exception:
+        return False
+    return proc.returncode == 0
+
+
+def looks_like_search_or_shell_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.lower()
+    if any(token in path for token in ("/search", "/results", "/all", "/explore", "/discover")):
+        return True
+    query_params = urllib.parse.parse_qs(parsed.query)
+    return any(key in query_params for key in ("q", "query", "search", "keyword", "wd"))
+
+
+def yt_dlp_cookie_browser_for_url(url: str) -> str | None:
+    root = root_domain(urllib.parse.urlparse(url).netloc.lower())
+    return YTDLP_COOKIE_BROWSER.get(root)
+
+
+def extract_yt_dlp_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root not in YTDLP_SUPPORTED_ROOTS:
+        return None
+    if looks_like_search_or_shell_url(url):
+        return None
+    if not yt_dlp_available():
+        return None
+
+    cmd = YT_DLP + ["--dump-single-json", "--skip-download", "--no-warnings"]
+    cookie_browser = yt_dlp_cookie_browser_for_url(url)
+    if cookie_browser:
+        cmd += ["--cookies-from-browser", cookie_browser]
+    cmd.append(url)
+    try:
+        proc = subprocess.run(cmd, text=True, capture_output=True, timeout=35)
+    except Exception:
+        return None
+    if proc.returncode != 0 or not clean(proc.stdout):
+        return None
+    try:
+        payload = json.loads(proc.stdout)
+    except Exception:
+        return None
+
+    title = clean(payload.get("title", ""))
+    description = clean(payload.get("description", ""))
+    uploader = clean(payload.get("uploader", "") or payload.get("channel", "") or payload.get("creator", ""))
+    tags = [clean(tag) for tag in (payload.get("tags") or []) if clean(tag)]
+    stats = []
+    for field in ("view_count", "like_count", "comment_count", "duration"):
+        value = payload.get(field)
+        if value not in (None, "", 0):
+            stats.append(f"{field}={value}")
+    text = " ".join(part for part in [title, description, uploader, " ".join(tags[:12]), " ".join(stats)] if part)
+    summary = summarize_text(text, query)
+    if not summary and title:
+        summary = [title]
+        if description:
+            summary.append(description[:220])
+    if not summary:
+        return None
+
+    sections = []
+    if uploader:
+        sections.append({"level": "meta", "text": f"uploader: {uploader}"})
+    if stats:
+        sections.append({"level": "meta", "text": ", ".join(stats)})
+    if tags:
+        sections.append({"level": "meta", "text": "tags: " + ", ".join(tags[:10])})
+
+    rules = ["yt_dlp_adapter"]
+    if cookie_browser:
+        rules.append(f"browser_cookies_{cookie_browser}")
+    return {
+        "url": url,
+        "fetch_mode": "yt_dlp",
+        "title": title or clean(parsed.netloc),
+        "summary": summary[:5],
+        "sections": sections[:8],
+        "links": [],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "uploader": uploader,
+        "applied_rules": rules,
+    }
 
 
 def try_fetch(url: str, timeout: int = 15) -> str:
@@ -339,6 +453,8 @@ def run_fallbacks(url: str, query: str, allow_fallback: bool = True, follow_dept
         return None
     for mode in fallback_order_for_url(url):
         if mode == "browser":
+            if not ENABLE_BROWSER_FALLBACK:
+                continue
             browser_result = browser_assisted_extract(url, query)
             if browser_result:
                 return browser_result
@@ -1163,7 +1279,7 @@ def normalize_reader_text(text: str) -> Tuple[str, str]:
 
 
 def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
-    special = extract_github_special(url, query) or extract_reddit_special(url, query)
+    special = extract_github_special(url, query) or extract_reddit_special(url, query) or extract_yt_dlp_special(url, query)
     if special:
         return special
     domain = urllib.parse.urlparse(url).netloc.lower()
@@ -1242,7 +1358,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         fallback_result = run_fallbacks(url, query, allow_fallback=True, follow_depth=False)
         if fallback_result:
             return fallback_result
-    if quality == "low" and domain in BROWSER_ASSIST_DOMAINS:
+    if quality == "low" and ENABLE_BROWSER_FALLBACK and domain in BROWSER_ASSIST_DOMAINS:
         browser_result = browser_assisted_extract(url, query)
         if browser_result:
             return browser_result

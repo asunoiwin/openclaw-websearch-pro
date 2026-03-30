@@ -21,6 +21,7 @@ Unified search orchestration for OpenClaw. This plugin consolidates multi-engine
 - Nudges agents to use search proactively on external-information tasks
 - Bundles browser-bridge and content-distill helpers inside the plugin for portability
 - Includes site-specific extractors for high-value result pages
+- Includes an optional `yt-dlp` content-page adapter for sites such as Bilibili, Douyin, XiaoHongShu, Weibo, and X
 - Falls back to domain-scoped re-search when the target page is blocked, challenged, or unusable
 
 ## Bundled scripts
@@ -173,6 +174,7 @@ Common `fetch_mode` values now include:
 
 - `github_raw`
 - `reddit_json`
+- `yt_dlp`
 - `search_results`
 - `browser_session`
 - `domain_search_fallback`
@@ -203,6 +205,18 @@ Current specialized paths include:
 When a target page is blocked or degraded, the orchestrator can synthesize a usable extraction by re-searching the same query with a domain restriction and converting the best results into structured evidence.
 
 ## Browser session fallback
+
+This path is now disabled by default.
+
+Reason:
+
+- repeated page-open audits can disturb real logged-in sessions
+- some platforms treat repeated tab opens as abnormal behavior
+- the orchestrator now prefers `direct`, `reader`, `domain_search_fallback`, `external_discovery_fallback`, and `yt_dlp` before touching the browser
+
+Enable it only when you explicitly want browser-driven extraction:
+
+- `OPENCLAW_SEARCH_ENABLE_BROWSER_FALLBACK=1`
 
 When a target site is blocked by login walls, bot challenges, or heavy client rendering, the orchestrator can reuse the local Safari session and extract the page the user actually sees.
 
@@ -263,9 +277,10 @@ It reports, per site:
 
 Browser testing now follows a strict cleanup rule:
 
-1. open a dedicated temporary page for the test
-2. extract what is needed
-3. close that temporary page immediately after the audit
+1. reuse the current browser window when possible
+2. open a temporary test tab inside that window instead of spawning more windows
+3. extract what is needed
+4. close that temporary tab immediately after the audit
 
 Command:
 

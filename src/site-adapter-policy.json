@@ -21,6 +21,10 @@
       "mode": "external_or_custom_adapter",
       "reason": "页面重 JS 且正文不可读，适合专属适配器或第三方项目集成。"
     },
+    "bilibili.com": {
+      "mode": "yt_dlp_or_custom_extract",
+      "reason": "二级视频页可用 yt-dlp 稳定提取元数据，优先于整页摘要。"
+    },
     "weibo.com": {
       "mode": "external_or_custom_adapter",
       "reason": "匿名/访客系统干扰明显，适合专属抓取器。"

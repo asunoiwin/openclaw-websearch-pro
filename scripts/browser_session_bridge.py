@@ -259,16 +259,34 @@ def open_url(which: str, url: str) -> dict:
         script = f'''
 tell application "Google Chrome"
   activate
-  if (count of windows) = 0 then make new window
-  tell active tab of front window to set URL to "{url}"
+  if (count of windows) = 0 then
+    make new window
+    set URL of active tab of front window to "{url}"
+  else
+    tell front window to make new tab with properties {{URL:"{url}"}}
+  end if
 end tell
 '''
     else:
         script = f'''
 tell application "Safari"
   activate
-  set newDoc to make new document
-  set URL of newDoc to "{url}"
+  if (count of windows) = 0 then
+    set newDoc to make new document
+    set URL of newDoc to "{url}"
+  else
+    set frontWin to front window
+    if (count of tabs of frontWin) = 0 then
+      close frontWin
+      set newDoc to make new document
+      set URL of newDoc to "{url}"
+    else
+      tell frontWin
+        set newTab to make new tab at end of tabs with properties {{URL:"{url}"}}
+        set current tab to newTab
+      end tell
+    end if
+  end if
 end tell
 '''
     run_osascript(script)
@@ -281,8 +299,13 @@ def close_front(which: str) -> dict:
 tell application "Google Chrome"
   if it is not running then return "chrome_not_running"
   if (count of windows) = 0 then return "chrome_no_window"
-  close front window
-  return "ok"
+  tell front window
+    if (count of tabs) > 1 then
+      close active tab
+      return "ok"
+    end if
+  end tell
+  return "chrome_single_tab_preserved"
 end tell
 '''
     else:
@@ -290,12 +313,17 @@ end tell
 tell application "Safari"
   if it is not running then return "safari_not_running"
   if (count of windows) = 0 then return "safari_no_window"
-  if (count of documents) = 0 then return "safari_no_document"
-  close front document
-  return "ok"
+  tell front window
+    if (count of tabs) > 1 then
+      close current tab
+      return "ok"
+    end if
+  end tell
+  return "safari_single_tab_preserved"
 end tell
 '''
-    return {"ok": run_osascript(script) == "ok", "browser": which}
+    result = run_osascript(script)
+    return {"ok": result in {"ok", "chrome_single_tab_preserved", "safari_single_tab_preserved"}, "browser": which, "result": result}
 
 
 def wait_for_page(which: str, url: str, timeout: float = 8.0) -> dict:

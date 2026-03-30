@@ -132,6 +132,7 @@ def test_github_rule_tagging():
 def test_browser_session_fallback_for_low_signal_pages():
     original_fetch = module.fetch_with_reader_fallback
     original_browser = module.browser_assisted_extract
+    original_flag = module.ENABLE_BROWSER_FALLBACK
 
     def fake_fetch(url):
         return "<html><head><title>Zhihu</title></head><body>登录后查看更多</body></html>", "direct"
@@ -150,14 +151,48 @@ def test_browser_session_fallback_for_low_signal_pages():
 
     module.fetch_with_reader_fallback = fake_fetch
     module.browser_assisted_extract = fake_browser
+    module.ENABLE_BROWSER_FALLBACK = True
     try:
         result = module.deep_extract("https://www.zhihu.com/question/123", "openclaw 优化")
     finally:
         module.fetch_with_reader_fallback = original_fetch
         module.browser_assisted_extract = original_browser
+        module.ENABLE_BROWSER_FALLBACK = original_flag
 
     assert result["fetch_mode"] == "browser_session"
     assert "browser_session_fallback" in result["applied_rules"]
+
+
+def test_yt_dlp_adapter_for_content_page():
+    original_run = module.subprocess.run
+    original_available = module.yt_dlp_available
+
+    class FakeProc:
+        def __init__(self, stdout="", returncode=0):
+            self.stdout = stdout
+            self.stderr = ""
+            self.returncode = returncode
+
+    def fake_run(cmd, text=True, capture_output=True, timeout=35):
+        if cmd[:3] == ["python3", "-m", "yt_dlp"] and "--dump-single-json" in cmd:
+            return FakeProc(
+                stdout='{"title":"OpenClaw Bilibili Tutorial","description":"完整安装与优化教程","uploader":"AI 学长","tags":["OpenClaw","教程"],"view_count":12345,"like_count":321,"duration":456}'
+            )
+        if cmd[:3] == ["python3", "-m", "yt_dlp"] and "--version" in cmd:
+            return FakeProc(stdout="2025.10.14")
+        raise AssertionError(cmd)
+
+    module.subprocess.run = fake_run
+    module.yt_dlp_available = lambda: True
+    try:
+        result = module.extract_yt_dlp_special("https://www.bilibili.com/video/BV1abc123456", "OpenClaw 教程")
+    finally:
+        module.subprocess.run = original_run
+        module.yt_dlp_available = original_available
+
+    assert result is not None
+    assert result["fetch_mode"] == "yt_dlp"
+    assert "yt_dlp_adapter" in result["applied_rules"]
 
 
 def test_browser_session_fallback_rejects_wrong_page():

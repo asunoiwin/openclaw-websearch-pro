@@ -267,8 +267,8 @@ end tell
         script = f'''
 tell application "Safari"
   activate
-  if (count of windows) = 0 then make new document
-  set URL of front document to "{url}"
+  set newDoc to make new document
+  set URL of newDoc to "{url}"
 end tell
 '''
     run_osascript(script)

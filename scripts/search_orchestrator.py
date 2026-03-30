@@ -346,6 +346,11 @@ def has_site_specific_result_signal(site: str, text: str, query: str) -> bool:
 
 
 def summarize_browser_text(text: str, query: str, title: str, url: str) -> List[str]:
+    site = infer_site_from_url(url)
+    if site == "taobao":
+        cards = extract_taobao_browser_results(text, query)
+        if cards:
+            return cards
     parsed = urllib.parse.urlparse(url)
     path = parsed.path.lower()
     title_l = clean(title).lower()
@@ -379,6 +384,31 @@ def summarize_browser_text(text: str, query: str, title: str, url: str) -> List[
         if len(snippets) >= 5:
             break
     return snippets[:5] or summarize_text(text, query)
+
+
+def extract_taobao_browser_results(text: str, query: str) -> List[str]:
+    sample = clean(text)
+    if not sample or "人付款" not in sample:
+        return []
+    matches = list(re.finditer(r"¥\s*\d+(?:\s*\.\s*\d+)?", sample))
+    results = []
+    seen = set()
+    for match in matches[:12]:
+        left = max(0, match.start() - 90)
+        right = min(len(sample), match.end() + 120)
+        chunk = clean(sample[left:right])
+        if query_overlap_score(chunk, query) < 1:
+            continue
+        if "人付款" not in chunk:
+            continue
+        chunk = re.sub(r"^(?:综合|销量|价格|区间|春上新|品牌|新品|百亿补贴|淘宝秒杀|淘金币抵钱|包邮|开票服务|天猫超市|退货宝|公益宝贝|对公支付|筛选商品)\s*", "", chunk)
+        if chunk in seen:
+            continue
+        seen.add(chunk)
+        results.append(chunk[:220])
+        if len(results) >= 5:
+            break
+    return results
 
 
 def extract_github_special(url: str, query: str) -> Dict | None:

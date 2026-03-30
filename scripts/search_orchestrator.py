@@ -123,6 +123,15 @@ EXTERNAL_DISCOVERY_EXTRA_SUFFIXES = {
     "x.com": ["GitHub", "thread", "post", "discussion"],
     "reddit.com": ["GitHub", "discussion", "review"],
 }
+ACTIONABLE_DISCOVERY_DOMAINS = {
+    "github.com",
+    "clawhub.com",
+    "docs.openclaw.ai",
+    "docs.anthropic.com",
+    "ai.google.dev",
+    "zhihu.com",
+    "bilibili.com",
+}
 EXTERNAL_DISCOVERY_BRANDS = {
     "taobao.com": "淘宝 taobao",
     "tmall.com": "天猫 tmall",
@@ -212,6 +221,16 @@ def root_domain(value: str) -> str:
     if len(parts) <= 2:
         return host
     return ".".join(parts[-2:])
+
+
+def actionable_discovery_bonus(url: str, target_root: str) -> float:
+    item_domain = urllib.parse.urlparse(url).netloc.lower()
+    item_root = root_domain(item_domain)
+    if item_root in ACTIONABLE_DISCOVERY_DOMAINS:
+        return 0.35
+    if item_root == target_root:
+        return 0.15
+    return 0.0
 
 
 def fallback_order_for_url(url: str) -> Tuple[str, ...]:
@@ -1069,7 +1088,7 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                 if not key or key in seen:
                     continue
                 seen.add(key)
-                item.score = score_result(item, query)
+                item.score = score_result(item, query) + actionable_discovery_bonus(item.url, root)
                 collected.append(item)
         collected.sort(key=lambda item: item.score, reverse=True)
         useful = collected[:5]

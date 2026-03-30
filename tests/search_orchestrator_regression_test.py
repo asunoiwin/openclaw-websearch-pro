@@ -379,6 +379,68 @@ def test_twitter_oembed_adapter_for_text_status():
     assert result["summary"][0].startswith("just setting up my twttr")
 
 
+def test_known_error_shell_triggers_fallback_for_xiaohongshu():
+    original_fetch = module.fetch_with_reader_fallback
+    original_run_fallbacks = module.run_fallbacks
+
+    def fake_fetch(url):
+        return '<html><head><title>小红书 - 你访问的页面不见了</title></head><body>错误页</body></html>', 'direct'
+
+    def fake_run_fallbacks(url, query, allow_fallback=True, follow_depth=True):
+        return {
+            'url': url,
+            'fetch_mode': 'external_discovery_fallback',
+            'title': '外部发现',
+            'summary': ['命中站外有效内容'],
+            'sections': [],
+            'links': [],
+            'quality': 'medium',
+            'applied_rules': ['external_discovery_fallback'],
+        }
+
+    module.fetch_with_reader_fallback = fake_fetch
+    module.run_fallbacks = fake_run_fallbacks
+    try:
+        result = module.deep_extract('https://www.xiaohongshu.com/explore/demo', 'OpenClaw 优化')
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.run_fallbacks = original_run_fallbacks
+
+    assert result['fetch_mode'] == 'external_discovery_fallback'
+    assert 'known_error_shell' in result['applied_rules']
+
+
+def test_known_error_shell_triggers_fallback_for_douyin_empty_body():
+    original_fetch = module.fetch_with_reader_fallback
+    original_run_fallbacks = module.run_fallbacks
+
+    def fake_fetch(url):
+        return '<html><head><meta charset=\"UTF-8\" /></head><body></body></html>', 'direct'
+
+    def fake_run_fallbacks(url, query, allow_fallback=True, follow_depth=True):
+        return {
+            'url': url,
+            'fetch_mode': 'external_discovery_fallback',
+            'title': '外部发现',
+            'summary': ['命中站外有效内容'],
+            'sections': [],
+            'links': [],
+            'quality': 'medium',
+            'applied_rules': ['external_discovery_fallback'],
+        }
+
+    module.fetch_with_reader_fallback = fake_fetch
+    module.run_fallbacks = fake_run_fallbacks
+    try:
+        result = module.deep_extract('https://www.douyin.com/video/demo', 'OpenClaw 优化')
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.run_fallbacks = original_run_fallbacks
+
+    assert result['fetch_mode'] == 'external_discovery_fallback'
+    assert 'known_error_shell' in result['applied_rules']
+
+
 def test_jd_item_meta_extractor():
     html = """
     <html><head>
@@ -579,6 +641,8 @@ if __name__ == "__main__":
     test_yt_dlp_adapter_for_reddit_content_page()
     test_gallery_dl_adapter_for_reddit_submission()
     test_twitter_oembed_adapter_for_text_status()
+    test_known_error_shell_triggers_fallback_for_xiaohongshu()
+    test_known_error_shell_triggers_fallback_for_douyin_empty_body()
     test_browser_session_fallback_rejects_wrong_page()
     test_browser_session_fallback_rejects_shell_without_query_overlap()
     test_browser_auth_audit_prefers_authenticated_safari()

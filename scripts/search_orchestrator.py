@@ -294,6 +294,24 @@ def looks_like_search_or_shell_url(url: str) -> bool:
     return any(key in query_params for key in ("q", "query", "search", "keyword", "wd"))
 
 
+def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
+    lowered_title = clean(title).lower()
+    lowered_raw = clean(raw[:3000]).lower()
+    domain = root_domain(urllib.parse.urlparse(url).netloc.lower())
+    if domain == "xiaohongshu.com" and (
+        "你访问的页面不见了" in title
+        or "你访问的页面不见了" in raw[:3000]
+        or "page not found" in lowered_title
+    ):
+        return True
+    if domain == "douyin.com":
+        if re.search(r"<body>\s*</body>", raw[:5000], flags=re.I | re.S):
+            return True
+        if len(lowered_raw) < 120 and not lowered_title:
+            return True
+    return False
+
+
 def yt_dlp_cookie_browser_for_url(url: str) -> str | None:
     root = root_domain(urllib.parse.urlparse(url).netloc.lower())
     return YTDLP_COOKIE_BROWSER.get(root)
@@ -1565,6 +1583,10 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     jd_special = extract_jd_item_special(url, raw, query)
     if jd_special:
         return jd_special
+    if looks_like_known_error_shell("", raw, url):
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+        if fallback_result:
+            return with_rules(fallback_result, "known_error_shell")
     if is_low_signal_text(raw):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:
@@ -1594,6 +1616,10 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         } | {"applied_rules": ["reader_then_distill"] if mode == "reader" else []}
     parser = Extractor()
     parser.feed(raw[:250000])
+    if looks_like_known_error_shell(parser.title, raw, url):
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+        if fallback_result:
+            return with_rules(fallback_result, "known_error_shell")
     parser_search = extract_parser_search_results(url, parser, query)
     if parser_search and (
         looks_like_search_shell(parser.title, parser.sections, parser.links)
@@ -1625,6 +1651,8 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     ):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:
+            if looks_like_known_error_shell(parser.title, raw, url):
+                return with_rules(fallback_result, "known_error_shell")
             return fallback_result
     quality = effective_quality(summary, summary_source, mode, quality)
     if quality == "low" and allow_fallback:

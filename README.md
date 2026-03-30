@@ -206,6 +206,9 @@ Current specialized paths include:
 - X / Twitter status URLs
   - can use official `oEmbed` for public text posts without a browser session
 - Xiaohongshu / Douyin
+- Xiaohongshu runtime blockers
+  - `xhs_adapter_bootstrap_blocked`: local Go service is still blocked in dependency bootstrap and has not become healthy yet
+  - `xhs_adapter_login_required`: local service is up but the account is not logged in
   - when in-site pages are shells, error pages, or unreadable JS apps, external discovery now biases toward `GitHub / skill / MCP / tutorial / automation` results instead of generic platform blurbs
 - Search result pages
   - Google

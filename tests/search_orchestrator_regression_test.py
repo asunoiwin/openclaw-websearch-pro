@@ -768,14 +768,17 @@ def test_xhs_mcp_adapter():
 def test_adapter_blocker_rules_for_xhs_and_douyin():
     original_douyin_available = module.douyin_project_available
     original_xhs_start = module.ensure_xhs_service_started
+    original_xhs_bootstrap = module.xhs_runtime_bootstrap_blocked
     module.douyin_project_available = lambda: False
     module.ensure_xhs_service_started = lambda: False
+    module.xhs_runtime_bootstrap_blocked = lambda: False
     try:
         douyin_rules = module.adapter_blocker_rules("https://www.douyin.com/video/7488202296297166114")
         xhs_rules = module.adapter_blocker_rules("https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123")
     finally:
         module.douyin_project_available = original_douyin_available
         module.ensure_xhs_service_started = original_xhs_start
+        module.xhs_runtime_bootstrap_blocked = original_xhs_bootstrap
 
     assert "douyin_adapter_runtime_missing" in douyin_rules
     assert "xhs_adapter_service_unavailable" in xhs_rules
@@ -784,8 +787,10 @@ def test_adapter_blocker_rules_for_xhs_and_douyin():
 def test_adapter_blocker_rules_for_xhs_login_required():
     original_xhs_start = module.ensure_xhs_service_started
     original_xhs_login = module.xhs_login_status
+    original_xhs_bootstrap = module.xhs_runtime_bootstrap_blocked
     module.ensure_xhs_service_started = lambda: True
     module.xhs_login_status = lambda: False
+    module.xhs_runtime_bootstrap_blocked = lambda: False
     try:
         xhs_rules = module.adapter_blocker_rules(
             "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123"
@@ -793,8 +798,22 @@ def test_adapter_blocker_rules_for_xhs_login_required():
     finally:
         module.ensure_xhs_service_started = original_xhs_start
         module.xhs_login_status = original_xhs_login
+        module.xhs_runtime_bootstrap_blocked = original_xhs_bootstrap
 
     assert "xhs_adapter_login_required" in xhs_rules
+
+
+def test_adapter_blocker_rules_for_xhs_bootstrap_blocked():
+    original_bootstrap = module.xhs_runtime_bootstrap_blocked
+    module.xhs_runtime_bootstrap_blocked = lambda: True
+    try:
+        xhs_rules = module.adapter_blocker_rules(
+            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123"
+        )
+    finally:
+        module.xhs_runtime_bootstrap_blocked = original_bootstrap
+
+    assert "xhs_adapter_bootstrap_blocked" in xhs_rules
 
 
 def test_commerce_line_formatting_extracts_price_and_sales():
@@ -922,6 +941,7 @@ if __name__ == "__main__":
     test_xhs_mcp_adapter()
     test_adapter_blocker_rules_for_xhs_and_douyin()
     test_adapter_blocker_rules_for_xhs_login_required()
+    test_adapter_blocker_rules_for_xhs_bootstrap_blocked()
     test_commerce_line_formatting_extracts_price_and_sales()
     test_domain_search_fallback_formats_commerce_results()
     test_commerce_bonus_prefers_product_like_result()

@@ -282,6 +282,26 @@ def xhs_service_pid() -> int | None:
     return pid
 
 
+def cleanup_xhs_service() -> None:
+    pid = xhs_service_pid()
+    if pid:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except Exception:
+            pass
+    try:
+        XHS_PID_FILE.unlink()
+    except Exception:
+        pass
+
+
+def xhs_runtime_bootstrap_blocked() -> bool:
+    if not XHS_LOG_FILE.exists():
+        return False
+    text = XHS_LOG_FILE.read_text(errors="ignore")[-4000:]
+    return "go: downloading github.com/gabriel-vasile/mimetype" in text
+
+
 def ensure_xhs_service_started(wait_seconds: int = 12) -> bool:
     if not xhs_project_available():
         return False
@@ -316,6 +336,7 @@ def ensure_xhs_service_started(wait_seconds: int = 12) -> bool:
         if xhs_service_available():
             return True
         time.sleep(1)
+    cleanup_xhs_service()
     return False
 
 
@@ -333,6 +354,8 @@ def adapter_blocker_rules(url: str) -> List[str]:
         xsec = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
         if not xsec:
             rules.append("xhs_missing_xsec_token")
+        elif xhs_runtime_bootstrap_blocked():
+            rules.append("xhs_adapter_bootstrap_blocked")
         elif not ensure_xhs_service_started():
             rules.append("xhs_adapter_service_unavailable")
         elif xhs_login_status() is False:

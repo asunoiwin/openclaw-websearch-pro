@@ -116,8 +116,10 @@ EXTERNAL_DISCOVERY_BRANDS = {
     "xiaohongshu.com": "小红书 xiaohongshu",
     "douyin.com": "抖音 douyin",
     "weibo.com": "微博 weibo",
+    "reddit.com": "reddit",
     "x.com": "x twitter",
     "gitlab.com": "gitlab",
+    "producthunt.com": "product hunt",
     "36kr.com": "36kr",
     "jd.com": "京东",
     "yangkeduo.com": "拼多多",
@@ -663,21 +665,28 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
         sections = []
         for item, nested in deep_hits:
             nested_summary = nested.get("summary") or []
+            if query_overlap_score(" ".join(nested_summary), query) < 1:
+                continue
+            if looks_like_generic_site_blurb(nested.get("title") or item.title, nested_summary, query):
+                continue
             line = nested_summary[0] if nested_summary else item.title
             summary.append(line)
             links.append({"text": nested.get("title") or item.title, "href": item.url})
             sections.append({"level": "follow", "text": nested.get("title") or item.title})
-        return {
-            "url": url,
-            "fetch_mode": "domain_search_deep_fallback",
-            "title": clean(root or domain),
-            "summary": summary[:5],
-            "sections": sections[:10],
-            "links": links[:10],
-            "quality": "high" if len(deep_hits) >= 2 else "medium",
-            "source_query": variant if len(variants) == 1 else variants[:4],
-            "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "followup_refinement", "root_domain_relaxation" if root and root != domain else ""])),
-        }
+        if not summary:
+            deep_hits = []
+        else:
+            return {
+                "url": url,
+                "fetch_mode": "domain_search_deep_fallback",
+                "title": clean(root or domain),
+                "summary": summary[:5],
+                "sections": sections[:10],
+                "links": links[:10],
+                "quality": "high" if len(summary) >= 2 else "medium",
+                "source_query": variant if len(variants) == 1 else variants[:4],
+                "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "followup_refinement", "root_domain_relaxation" if root and root != domain else ""])),
+            }
     return {
         "url": url,
         "fetch_mode": "domain_search_fallback",

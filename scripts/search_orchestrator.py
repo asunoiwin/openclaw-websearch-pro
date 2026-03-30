@@ -28,6 +28,7 @@ CHROME_BIN = os.environ.get("OPENCLAW_CHROME_BIN", "/Applications/Google Chrome.
 XHS_BASE_URL = os.environ.get("OPENCLAW_XHS_BASE_URL", "http://127.0.0.1:18060")
 XHS_PID_FILE = Path(os.environ.get("OPENCLAW_XHS_PID_FILE", "/tmp/openclaw_xhs_mcp.pid"))
 XHS_LOG_FILE = Path(os.environ.get("OPENCLAW_XHS_LOG_FILE", "/tmp/openclaw_xhs_mcp.log"))
+XHS_BINARY = Path(os.environ.get("OPENCLAW_XHS_BINARY", str(XHS_PROJECT / "xhs_mcp_bin")))
 YT_DLP = ["python3", "-m", "yt_dlp"]
 GALLERY_DL = ["python3", "-m", "gallery_dl"]
 READER_FIRST_DOMAINS = {
@@ -310,15 +311,19 @@ def ensure_xhs_service_started(wait_seconds: int = 12) -> bool:
     if not xhs_service_pid():
         XHS_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         log_handle = open(XHS_LOG_FILE, "a", encoding="utf-8")
-        proc = subprocess.Popen(
-            [
+        if XHS_BINARY.exists() and os.access(XHS_BINARY, os.X_OK):
+            cmd = [str(XHS_BINARY), "-headless=true", "-bin", CHROME_BIN]
+        else:
+            cmd = [
                 "/opt/homebrew/bin/go",
                 "run",
                 ".",
                 "-headless=true",
                 "-bin",
                 CHROME_BIN,
-            ],
+            ]
+        proc = subprocess.Popen(
+            cmd,
             cwd=str(XHS_PROJECT),
             env={
                 **os.environ,
@@ -354,7 +359,9 @@ def adapter_blocker_rules(url: str) -> List[str]:
         xsec = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
         if not xsec:
             rules.append("xhs_missing_xsec_token")
-        elif xhs_runtime_bootstrap_blocked():
+        elif xhs_service_available() and xhs_login_status() is False:
+            rules.append("xhs_adapter_login_required")
+        elif xhs_runtime_bootstrap_blocked() and not xhs_service_available():
             rules.append("xhs_adapter_bootstrap_blocked")
         elif not ensure_xhs_service_started():
             rules.append("xhs_adapter_service_unavailable")

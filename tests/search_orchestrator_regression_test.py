@@ -703,6 +703,81 @@ def test_external_discovery_fallback_for_chinese_social_sites():
     assert "external_discovery_fallback" in result["applied_rules"]
 
 
+def test_douyin_project_adapter():
+    original_run = module.subprocess.run
+    original_available = module.douyin_project_available
+
+    class FakeProc:
+        def __init__(self, stdout="", returncode=0):
+            self.stdout = stdout
+            self.stderr = ""
+            self.returncode = returncode
+
+    def fake_run(cmd, text=True, capture_output=True, timeout=40):
+        return FakeProc(
+            stdout='{"desc":"OpenClaw 抖音自动化实测","author":{"nickname":"测试作者"},"statistics":{"play_count":1234,"comment_count":56,"share_count":7}}'
+        )
+
+    module.subprocess.run = fake_run
+    module.douyin_project_available = lambda: True
+    try:
+        result = module.extract_douyin_project_special("https://www.douyin.com/video/7488202296297166114", "OpenClaw 自动化")
+    finally:
+        module.subprocess.run = original_run
+        module.douyin_project_available = original_available
+
+    assert result is not None
+    assert result["fetch_mode"] == "douyin_project"
+    assert "douyin_project_adapter" in result["applied_rules"]
+
+
+def test_xhs_mcp_adapter():
+    original_available = module.xhs_service_available
+    original_post = module.http_post_json
+
+    def fake_post(url, payload, timeout=20):
+        return {
+            "success": True,
+            "data": {
+                "title": "OpenClaw 小红书自动化实测",
+                "desc": "记录 OpenClaw 在小红书内容运营中的自动化实践",
+                "user": {"nickname": "测试博主"},
+                "interact_info": {"liked_count": 321, "comment_count": 18, "share_count": 4},
+            },
+        }
+
+    module.xhs_service_available = lambda: True
+    module.http_post_json = fake_post
+    try:
+        result = module.extract_xhs_mcp_special(
+            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123",
+            "OpenClaw 自动化",
+        )
+    finally:
+        module.xhs_service_available = original_available
+        module.http_post_json = original_post
+
+    assert result is not None
+    assert result["fetch_mode"] == "xhs_mcp"
+    assert "xhs_mcp_adapter" in result["applied_rules"]
+
+
+def test_adapter_blocker_rules_for_xhs_and_douyin():
+    original_douyin_available = module.douyin_project_available
+    original_xhs_available = module.xhs_service_available
+    module.douyin_project_available = lambda: False
+    module.xhs_service_available = lambda: False
+    try:
+        douyin_rules = module.adapter_blocker_rules("https://www.douyin.com/video/7488202296297166114")
+        xhs_rules = module.adapter_blocker_rules("https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123")
+    finally:
+        module.douyin_project_available = original_douyin_available
+        module.xhs_service_available = original_xhs_available
+
+    assert "douyin_adapter_runtime_missing" in douyin_rules
+    assert "xhs_adapter_service_unavailable" in xhs_rules
+
+
 def test_commerce_line_formatting_extracts_price_and_sales():
     line = module.format_commerce_line(
         "OpenClaw 实战指南",
@@ -771,6 +846,9 @@ if __name__ == "__main__":
     test_browser_auth_audit_rejects_expired_session()
     test_generic_search_shell_extraction_from_sections()
     test_external_discovery_fallback_for_chinese_social_sites()
+    test_douyin_project_adapter()
+    test_xhs_mcp_adapter()
+    test_adapter_blocker_rules_for_xhs_and_douyin()
     test_commerce_line_formatting_extracts_price_and_sales()
     test_domain_search_fallback_formats_commerce_results()
     print("search orchestrator regression tests passed")

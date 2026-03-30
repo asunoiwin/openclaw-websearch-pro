@@ -21,6 +21,9 @@ ENABLE_BROWSER_FALLBACK = os.environ.get("OPENCLAW_SEARCH_ENABLE_BROWSER_FALLBAC
 HERE = Path(__file__).resolve().parent
 BRIDGE = HERE / "browser_session_bridge.py"
 DISTILL = HERE / "web_content_distill.py"
+DOUYIN_PROJECT = Path(os.environ.get("OPENCLAW_DOUYIN_PROJECT", "/tmp/douyin_proj"))
+XHS_PROJECT = Path(os.environ.get("OPENCLAW_XHS_PROJECT", "/tmp/xhs_mcp"))
+PY311 = os.environ.get("OPENCLAW_PY311", "/opt/homebrew/bin/python3.11")
 YT_DLP = ["python3", "-m", "yt_dlp"]
 GALLERY_DL = ["python3", "-m", "gallery_dl"]
 READER_FIRST_DOMAINS = {
@@ -194,6 +197,49 @@ GALLERY_DL_COOKIE_BROWSER = {
 }
 
 
+def command_available(path: str) -> bool:
+    return Path(path).exists()
+
+
+def xhs_project_available() -> bool:
+    return XHS_PROJECT.exists() and command_available("/opt/homebrew/bin/go")
+
+
+def douyin_project_available() -> bool:
+    return DOUYIN_PROJECT.exists() and command_available(PY311)
+
+
+def xhs_service_available() -> bool:
+    if not xhs_project_available():
+        return False
+    try:
+        raw = http_get("http://127.0.0.1:18060/health", timeout=3)
+    except Exception:
+        return False
+    return "healthy" in raw.lower() or "xiaohongshu-mcp" in raw.lower()
+
+
+def adapter_blocker_rules(url: str) -> List[str]:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    path = parsed.path.lower()
+    rules: List[str] = []
+    if root == "douyin.com" and "/video/" in path:
+        if not douyin_project_available():
+            rules.append("douyin_adapter_runtime_missing")
+        else:
+            rules.append("douyin_adapter_probe_failed")
+    if root == "xiaohongshu.com" and "/explore/" in path:
+        xsec = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
+        if not xsec:
+            rules.append("xhs_missing_xsec_token")
+        elif not xhs_service_available():
+            rules.append("xhs_adapter_service_unavailable")
+        else:
+            rules.append("xhs_adapter_probe_failed")
+    return rules
+
+
 @dataclass
 class SearchResult:
     title: str
@@ -303,6 +349,21 @@ def http_get(url: str, timeout: int = 20) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read().decode("utf-8", errors="ignore")
+
+
+def http_post_json(url: str, payload: Dict, timeout: int = 20) -> Dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="ignore"))
 
 
 def run_json(cmd: List[str], timeout: int = 45) -> Dict:
@@ -612,6 +673,132 @@ def extract_twitter_oembed_special(url: str, query: str) -> Dict | None:
         "links": links[:10],
         "quality": "medium" if summary else "low",
         "applied_rules": ["twitter_oembed"],
+    }
+
+
+def extract_douyin_project_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root != "douyin.com" or "/video/" not in parsed.path.lower():
+        return None
+    if not douyin_project_available():
+        return None
+    cmd = [
+        PY311,
+        "-c",
+        (
+            "import sys, asyncio, json; "
+            f"sys.path.insert(0, {json.dumps(str(DOUYIN_PROJECT))}); "
+            "from crawlers.hybrid.hybrid_crawler import HybridCrawler; "
+            "async def main():\n"
+            f"  data = await HybridCrawler().hybrid_parsing_single_video({json.dumps(url)}, minimal=True)\n"
+            "  print(json.dumps(data, ensure_ascii=False))\n"
+            "asyncio.run(main())"
+        ),
+    ]
+    try:
+        proc = subprocess.run(cmd, text=True, capture_output=True, timeout=40)
+    except Exception:
+        return None
+    if proc.returncode != 0:
+        return None
+    stdout = clean(proc.stdout)
+    if not stdout:
+        return None
+    try:
+        payload = json.loads(stdout)
+    except Exception:
+        return None
+    desc = clean(payload.get("desc", ""))
+    author = payload.get("author") or {}
+    author_name = clean(author.get("nickname", "") if isinstance(author, dict) else "")
+    statistics = payload.get("statistics") or {}
+    stats = []
+    for field in ("play_count", "admire_count", "comment_count", "collect_count", "share_count"):
+        value = statistics.get(field)
+        if value not in (None, "", 0):
+            stats.append(f"{field}={value}")
+    text = " ".join(part for part in [desc, author_name, " ".join(stats)] if part)
+    summary = summarize_text(text, query)
+    if not summary and desc:
+        summary = [desc[:280]]
+    if not summary:
+        return None
+    sections = []
+    if author_name:
+        sections.append({"level": "meta", "text": f"author: {author_name}"})
+    if stats:
+        sections.append({"level": "meta", "text": ", ".join(stats)})
+    return {
+        "url": url,
+        "fetch_mode": "douyin_project",
+        "title": author_name or "Douyin Video",
+        "summary": summary[:5],
+        "sections": sections[:8],
+        "links": [],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["douyin_project_adapter"],
+    }
+
+
+def extract_xhs_mcp_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root != "xiaohongshu.com":
+        return None
+    match = re.search(r"/explore/([0-9a-zA-Z]+)", parsed.path)
+    if not match:
+        return None
+    xsec_token = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
+    if not xsec_token:
+        return None
+    if not xhs_service_available():
+        return None
+    try:
+        payload = http_post_json(
+            "http://127.0.0.1:18060/api/v1/feeds/detail",
+            {"feed_id": match.group(1), "xsec_token": xsec_token},
+            timeout=20,
+        )
+    except Exception:
+        return None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return None
+    title = clean(data.get("title", ""))
+    desc = clean(data.get("desc", "") or data.get("content", ""))
+    user = data.get("user") or data.get("user_info") or {}
+    author = clean(user.get("nickname", "") if isinstance(user, dict) else "")
+    interact = data.get("interact_info") or data.get("interactions") or {}
+    stats = []
+    if isinstance(interact, dict):
+        for field in ("liked_count", "collected_count", "comment_count", "share_count"):
+            value = interact.get(field)
+            if value not in (None, "", 0):
+                stats.append(f"{field}={value}")
+    text = " ".join(part for part in [title, desc, author, " ".join(stats)] if part)
+    summary = summarize_text(text, query)
+    if not summary:
+        if title:
+            summary.append(title)
+        if desc:
+            summary.append(desc[:280])
+    if not summary:
+        return None
+    sections = []
+    if author:
+        sections.append({"level": "meta", "text": f"author: {author}"})
+    if stats:
+        sections.append({"level": "meta", "text": ", ".join(stats)})
+    return {
+        "url": url,
+        "fetch_mode": "xhs_mcp",
+        "title": title or author or "Xiaohongshu Feed",
+        "summary": summary[:5],
+        "sections": sections[:8],
+        "links": [],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["xhs_mcp_adapter"],
     }
 
 
@@ -1651,6 +1838,8 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         extract_github_special(url, query)
         or extract_reddit_special(url, query)
         or extract_twitter_oembed_special(url, query)
+        or extract_xhs_mcp_special(url, query)
+        or extract_douyin_project_special(url, query)
         or extract_gallery_dl_special(url, query)
         or extract_yt_dlp_special(url, query)
     )
@@ -1672,7 +1861,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     if looks_like_known_error_shell("", raw, url):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:
-            return with_rules(fallback_result, "known_error_shell")
+            return with_rules(fallback_result, "known_error_shell", *adapter_blocker_rules(url))
     if is_low_signal_text(raw):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:
@@ -1705,7 +1894,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     if looks_like_known_error_shell(parser.title, raw, url):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:
-            return with_rules(fallback_result, "known_error_shell")
+            return with_rules(fallback_result, "known_error_shell", *adapter_blocker_rules(url))
     parser_search = extract_parser_search_results(url, parser, query)
     if parser_search and (
         looks_like_search_shell(parser.title, parser.sections, parser.links)
@@ -1738,7 +1927,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:
             if looks_like_known_error_shell(parser.title, raw, url):
-                return with_rules(fallback_result, "known_error_shell")
+                return with_rules(fallback_result, "known_error_shell", *adapter_blocker_rules(url))
             return fallback_result
     quality = effective_quality(summary, summary_source, mode, quality)
     if quality == "low" and allow_fallback:

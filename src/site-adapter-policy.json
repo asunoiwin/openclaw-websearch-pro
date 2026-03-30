@@ -15,11 +15,11 @@
     },
     "xiaohongshu.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "登录态存在但搜索 DOM 仍是壳层，优先做外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
+      "reason": "优先使用 xiaohongshu-mcp 本地服务获取内容详情；当服务未启动、未登录或缺少 xsec_token 时，回退到外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
     },
     "douyin.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "页面重 JS 且正文不可读，优先做外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
+      "reason": "优先使用本地 Douyin 解析项目（Python 3.11）获取视频详情；当 cookies 不新鲜或接口返回空内容时，回退到外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
     },
     "bilibili.com": {
       "mode": "yt_dlp_or_custom_extract",

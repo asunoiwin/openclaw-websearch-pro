@@ -126,6 +126,19 @@ EXTERNAL_DISCOVERY_BRANDS = {
     "jd.com": "京东",
     "yangkeduo.com": "拼多多",
 }
+SITE_FALLBACK_ORDER = {
+    "xiaohongshu.com": ("external", "domain", "browser"),
+    "douyin.com": ("external", "domain", "browser"),
+    "weibo.com": ("external", "domain", "browser"),
+    "x.com": ("external", "domain", "browser"),
+    "gitlab.com": ("external", "domain", "browser"),
+    "producthunt.com": ("domain", "external", "browser"),
+    "reddit.com": ("domain", "external", "browser"),
+    "taobao.com": ("domain", "external", "browser"),
+    "tmall.com": ("domain", "external", "browser"),
+    "jd.com": ("domain", "external", "browser"),
+    "yangkeduo.com": ("external", "domain", "browser"),
+}
 
 
 @dataclass
@@ -162,6 +175,12 @@ def root_domain(value: str) -> str:
     if len(parts) <= 2:
         return host
     return ".".join(parts[-2:])
+
+
+def fallback_order_for_url(url: str) -> Tuple[str, ...]:
+    domain = urllib.parse.urlparse(url).netloc.lower()
+    root = root_domain(domain)
+    return SITE_FALLBACK_ORDER.get(root, ("browser", "domain", "external"))
 
 
 def url_path_depth(url: str) -> int:
@@ -312,6 +331,25 @@ def audit_browser_session(url: str) -> Dict | None:
             "auth_reason": page_status.get("auth_reason") or audit.get("status", {}).get("auth_reason"),
             "extract": page_status,
         }
+    return None
+
+
+def run_fallbacks(url: str, query: str, allow_fallback: bool = True, follow_depth: bool = True) -> Dict | None:
+    if not allow_fallback:
+        return None
+    for mode in fallback_order_for_url(url):
+        if mode == "browser":
+            browser_result = browser_assisted_extract(url, query)
+            if browser_result:
+                return browser_result
+        elif mode == "domain":
+            fallback = extract_domain_search_fallback(url, query, follow_depth=follow_depth)
+            if fallback:
+                return fallback
+        elif mode == "external":
+            external = extract_external_discovery_fallback(url, query)
+            if external:
+                return external
     return None
 
 
@@ -1131,29 +1169,17 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     domain = urllib.parse.urlparse(url).netloc.lower()
     raw, mode = fetch_with_reader_fallback(url)
     if not raw:
-        browser_result = browser_assisted_extract(url, query)
-        if browser_result:
-            return browser_result
-        fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
-        if fallback:
-            return fallback
-        external = extract_external_discovery_fallback(url, query) if allow_fallback else None
-        if external:
-            return external
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+        if fallback_result:
+            return fallback_result
         return with_rules({"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}, "unavailable")
     search_special = extract_search_page_special(url, raw, query)
     if search_special:
         return search_special
     if is_low_signal_text(raw):
-        browser_result = browser_assisted_extract(url, query)
-        if browser_result:
-            return browser_result
-        fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
-        if fallback:
-            return fallback
-        external = extract_external_discovery_fallback(url, query) if allow_fallback else None
-        if external:
-            return external
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+        if fallback_result:
+            return fallback_result
     if "<html" not in raw.lower():
         reader_title, normalized = normalize_reader_text(raw[:MAX_TEXT]) if mode == "reader" else ("", clean(raw[:MAX_TEXT]))
         summary = summarize_text(normalized, query)
@@ -1165,15 +1191,9 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
             except Exception:
                 pass
         if is_low_signal_text(normalized) or looks_like_generic_site_blurb(reader_title, summary, query):
-            browser_result = browser_assisted_extract(url, query)
-            if browser_result:
-                return browser_result
-            fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
-            if fallback:
-                return fallback
-            external = extract_external_discovery_fallback(url, query) if allow_fallback else None
-            if external:
-                return external
+            fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+            if fallback_result:
+                return fallback_result
         return {
             "url": url,
             "fetch_mode": mode,
@@ -1214,23 +1234,14 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         or (len(summary) <= 1 and looks_like_search_shell(parser.title, parser.sections, parser.links))
         or looks_like_generic_site_blurb(parser.title, summary, query)
     ):
-        browser_result = browser_assisted_extract(url, query)
-        if browser_result:
-            return browser_result
-        fallback = extract_domain_search_fallback(url, query) if allow_fallback else None
-        if fallback:
-            return fallback
-        external = extract_external_discovery_fallback(url, query) if allow_fallback else None
-        if external:
-            return external
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+        if fallback_result:
+            return fallback_result
     quality = effective_quality(summary, summary_source, mode, quality)
     if quality == "low" and allow_fallback:
-        fallback = extract_domain_search_fallback(url, query, follow_depth=False)
-        if fallback:
-            return fallback
-        external = extract_external_discovery_fallback(url, query)
-        if external:
-            return external
+        fallback_result = run_fallbacks(url, query, allow_fallback=True, follow_depth=False)
+        if fallback_result:
+            return fallback_result
     if quality == "low" and domain in BROWSER_ASSIST_DOMAINS:
         browser_result = browser_assisted_extract(url, query)
         if browser_result:

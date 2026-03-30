@@ -313,6 +313,27 @@ def test_generic_search_shell_extraction_from_sections():
     assert len(result["summary"]) >= 3
 
 
+def test_external_discovery_fallback_for_chinese_social_sites():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult("小红书 OpenClaw 安装教程", "https://www.xiaohongshu.com/explore/demo", "安装与优化经验", engine, variant, site_focus),
+            module.SearchResult("抖音 OpenClaw 实测", "https://www.douyin.com/video/demo", "实测效果总结", engine, variant, site_focus),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback("https://www.xiaohongshu.com/search_result?keyword=openclaw", "openclaw 优化")
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] == "external_discovery_fallback"
+    assert result["quality"] == "medium"
+    assert "external_discovery_fallback" in result["applied_rules"]
+
+
 
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
@@ -327,4 +348,5 @@ if __name__ == "__main__":
     test_browser_auth_audit_prefers_authenticated_safari()
     test_browser_auth_audit_rejects_expired_session()
     test_generic_search_shell_extraction_from_sections()
+    test_external_discovery_fallback_for_chinese_social_sites()
     print("search orchestrator regression tests passed")

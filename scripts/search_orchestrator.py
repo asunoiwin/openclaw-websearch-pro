@@ -104,6 +104,7 @@ SITE_QUERY_SUFFIXES = {
     "xiaohongshu": ["教程", "测评"],
     "douyin": ["教程", "实测"],
     "zhihu": ["经验", "回答"],
+    "weibo": ["讨论", "教程", "经验"],
     "x": ["thread", "post", "discussion"],
     "gitlab": ["repo", "project", "issue"],
     "36kr": ["资讯", "报道", "文章"],
@@ -112,6 +113,9 @@ SITE_QUERY_SUFFIXES = {
     "yangkeduo": ["教程", "安装", "购买"],
 }
 EXTERNAL_DISCOVERY_BRANDS = {
+    "xiaohongshu.com": "小红书 xiaohongshu",
+    "douyin.com": "抖音 douyin",
+    "weibo.com": "微博 weibo",
     "x.com": "x twitter",
     "gitlab.com": "gitlab",
     "36kr.com": "36kr",

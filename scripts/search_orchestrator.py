@@ -163,6 +163,11 @@ YTDLP_COOKIE_BROWSER = {
 }
 GALLERY_DL_SUPPORTED_ROOTS = {
     "weibo.com",
+    "reddit.com",
+}
+GALLERY_DL_COOKIE_BROWSER = {
+    "weibo.com": "chrome",
+    "reddit.com": "chrome",
 }
 
 
@@ -371,9 +376,14 @@ def extract_gallery_dl_special(url: str, query: str) -> Dict | None:
         return None
     if not gallery_dl_available():
         return None
+    cmd = GALLERY_DL + ["-j"]
+    cookie_browser = GALLERY_DL_COOKIE_BROWSER.get(root)
+    if cookie_browser:
+        cmd += ["--cookies-from-browser", cookie_browser]
+    cmd.append(url)
     try:
         proc = subprocess.run(
-            GALLERY_DL + ["-j", url],
+            cmd,
             text=True,
             capture_output=True,
             timeout=35,
@@ -391,6 +401,46 @@ def extract_gallery_dl_special(url: str, query: str) -> Dict | None:
     meta = payload[0][1] if isinstance(payload[0], list) and len(payload[0]) > 1 else {}
     if not isinstance(meta, dict):
         return None
+    if root == "reddit.com":
+        title = clean(meta.get("title", ""))
+        selftext = clean(meta.get("selftext", ""))
+        author = clean(meta.get("author", ""))
+        subreddit = clean(meta.get("subreddit", ""))
+        domain = clean(meta.get("domain", ""))
+        outbound = clean(meta.get("url", ""))
+        stats = []
+        for field in ("score", "num_comments"):
+            value = meta.get(field)
+            if value not in (None, "", 0):
+                stats.append(f"{field}={value}")
+        text = " ".join(part for part in [title, selftext, author, subreddit, domain, " ".join(stats)] if part)
+        summary = summarize_text(text, query)
+        if not summary and title:
+            summary = [title]
+            if selftext:
+                summary.append(selftext[:280])
+        if not summary:
+            return None
+        sections = []
+        if author:
+            sections.append({"level": "meta", "text": f"author: {author}"})
+        if subreddit:
+            sections.append({"level": "meta", "text": f"subreddit: {subreddit}"})
+        if domain:
+            sections.append({"level": "meta", "text": f"domain: {domain}"})
+        if stats:
+            sections.append({"level": "meta", "text": ", ".join(stats)})
+        links = [{"label": "outbound", "url": outbound}] if outbound.startswith("http") else []
+        return {
+            "url": url,
+            "fetch_mode": "gallery_dl",
+            "title": title or clean(parsed.netloc),
+            "summary": summary[:5],
+            "sections": sections[:8],
+            "links": links[:10],
+            "quality": "high" if len(summary) >= 2 else "medium",
+            "applied_rules": ["gallery_dl_adapter", "browser_cookies_chrome"],
+        }
     text_raw = clean(meta.get("text_raw", ""))
     user = meta.get("user") or {}
     author = clean(user.get("screen_name", "") if isinstance(user, dict) else "")
@@ -1452,8 +1502,8 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     special = (
         extract_github_special(url, query)
         or extract_reddit_special(url, query)
-        or extract_yt_dlp_special(url, query)
         or extract_gallery_dl_special(url, query)
+        or extract_yt_dlp_special(url, query)
     )
     if special:
         return special

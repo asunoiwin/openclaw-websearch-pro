@@ -323,6 +323,43 @@ def test_gallery_dl_adapter_for_weibo_status():
     assert "gallery_dl_adapter" in result["applied_rules"]
 
 
+def test_gallery_dl_adapter_for_reddit_submission():
+    original_run = module.subprocess.run
+    original_available = module.gallery_dl_available
+
+    class FakeProc:
+        def __init__(self, stdout="", returncode=0):
+            self.stdout = stdout
+            self.stderr = ""
+            self.returncode = returncode
+
+    def fake_run(cmd, text=True, capture_output=True, timeout=35):
+        if cmd[:3] == ["python3", "-m", "gallery_dl"] and "-j" in cmd:
+            return FakeProc(
+                stdout='[[2, {"title":"OpenClaw Reddit Discussion","selftext":"Users shared install notes and failure fixes","author":"alice","subreddit":"openclaw","score":42,"num_comments":17,"url":"https://example.com/details","domain":"example.com"}]]'
+            )
+        if cmd[:3] == ["python3", "-m", "gallery_dl"] and "--version" in cmd:
+            return FakeProc(stdout="1.31.10")
+        raise AssertionError(cmd)
+
+    module.subprocess.run = fake_run
+    module.gallery_dl_available = lambda: True
+    try:
+        result = module.extract_gallery_dl_special(
+            "https://www.reddit.com/r/openclaw/comments/abc123/openclaw_install_notes/",
+            "OpenClaw install notes",
+        )
+    finally:
+        module.subprocess.run = original_run
+        module.gallery_dl_available = original_available
+
+    assert result is not None
+    assert result["fetch_mode"] == "gallery_dl"
+    assert "gallery_dl_adapter" in result["applied_rules"]
+    assert "browser_cookies_chrome" in result["applied_rules"]
+    assert result["links"][0]["url"] == "https://example.com/details"
+
+
 def test_jd_item_meta_extractor():
     html = """
     <html><head>
@@ -521,6 +558,7 @@ if __name__ == "__main__":
     test_browser_session_fallback_for_low_signal_pages()
     test_yt_dlp_adapter_for_content_page()
     test_yt_dlp_adapter_for_reddit_content_page()
+    test_gallery_dl_adapter_for_reddit_submission()
     test_browser_session_fallback_rejects_wrong_page()
     test_browser_session_fallback_rejects_shell_without_query_overlap()
     test_browser_auth_audit_prefers_authenticated_safari()

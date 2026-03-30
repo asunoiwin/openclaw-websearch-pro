@@ -752,7 +752,7 @@ def test_xhs_mcp_adapter():
     module.local_http_post_json = fake_post
     try:
         result = module.extract_xhs_mcp_special(
-            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123",
+            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=3b4c5d6e7f8g9h0i",
             "OpenClaw 自动化",
         )
     finally:
@@ -774,7 +774,7 @@ def test_adapter_blocker_rules_for_xhs_and_douyin():
     module.xhs_runtime_bootstrap_blocked = lambda: False
     try:
         douyin_rules = module.adapter_blocker_rules("https://www.douyin.com/video/7488202296297166114")
-        xhs_rules = module.adapter_blocker_rules("https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123")
+        xhs_rules = module.adapter_blocker_rules("https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=3b4c5d6e7f8g9h0i")
     finally:
         module.douyin_project_available = original_douyin_available
         module.ensure_xhs_service_started = original_xhs_start
@@ -793,7 +793,7 @@ def test_adapter_blocker_rules_for_xhs_login_required():
     module.xhs_runtime_bootstrap_blocked = lambda: False
     try:
         xhs_rules = module.adapter_blocker_rules(
-            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123"
+            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=3b4c5d6e7f8g9h0i"
         )
     finally:
         module.ensure_xhs_service_started = original_xhs_start
@@ -814,6 +814,13 @@ def test_adapter_blocker_rules_for_xhs_bootstrap_blocked():
         module.xhs_runtime_bootstrap_blocked = original_bootstrap
 
     assert "xhs_adapter_bootstrap_blocked" in xhs_rules
+
+
+def test_adapter_blocker_rules_for_xhs_invalid_xsec_token():
+    xhs_rules = module.adapter_blocker_rules(
+        "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123"
+    )
+    assert "xhs_invalid_xsec_token" in xhs_rules
 
 
 def test_commerce_line_formatting_extracts_price_and_sales():
@@ -942,6 +949,7 @@ if __name__ == "__main__":
     test_adapter_blocker_rules_for_xhs_and_douyin()
     test_adapter_blocker_rules_for_xhs_login_required()
     test_adapter_blocker_rules_for_xhs_bootstrap_blocked()
+    test_adapter_blocker_rules_for_xhs_invalid_xsec_token()
     test_commerce_line_formatting_extracts_price_and_sales()
     test_domain_search_fallback_formats_commerce_results()
     test_commerce_bonus_prefers_product_like_result()

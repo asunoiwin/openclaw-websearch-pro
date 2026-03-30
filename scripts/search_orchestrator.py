@@ -359,6 +359,8 @@ def adapter_blocker_rules(url: str) -> List[str]:
         xsec = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
         if not xsec:
             rules.append("xhs_missing_xsec_token")
+        elif xsec.lower() in {"abc123", "test", "demo"} or len(xsec) < 8:
+            rules.append("xhs_invalid_xsec_token")
         elif xhs_service_available() and xhs_login_status() is False:
             rules.append("xhs_adapter_login_required")
         elif xhs_runtime_bootstrap_blocked() and not xhs_service_available():
@@ -899,6 +901,8 @@ def extract_xhs_mcp_special(url: str, query: str) -> Dict | None:
         return None
     xsec_token = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
     if not xsec_token:
+        return None
+    if xsec_token.lower() in {"abc123", "test", "demo"} or len(xsec_token) < 8:
         return None
     if not ensure_xhs_service_started():
         return None

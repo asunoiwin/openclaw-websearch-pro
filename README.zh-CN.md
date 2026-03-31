@@ -35,6 +35,7 @@
 - `scripts/browser_auth_audit.py`
 - `scripts/web_content_distill.py`
 - `src/site-adapter-policy.json`
+- `docs/mediacrawler-adapter-matrix.md`
 
 这样做的目的：
 
@@ -351,6 +352,33 @@ python3 scripts/browser_session_bridge.py close-front safari
 2. 读取真实 DOM 文本、标题、链接、标题层级
 3. 如果页面是搜索结果页，优先抽取与 query 强相关的局部片段
 4. 如果拿到的是控制台页、登录壳页、错误域名页，则直接判失败，不把它误算成高质量命中
+
+## MediaCrawler 适配矩阵
+
+插件现在额外维护了一份 `MediaCrawler` 对接矩阵：
+
+- `docs/mediacrawler-adapter-matrix.md`
+
+这份矩阵明确了：
+
+- `MediaCrawler` 原生支持哪些平台
+- 当前哪些站点应该继续保留现有主路径
+- 哪些站点应该优先迁移或继续推进 `MediaCrawler`
+
+当前结论是：
+
+- 小红书：
+  - 继续以 `xiaohongshu-mcp` 为主
+  - 因为现在已经稳定支持 `search -> detail`
+- 抖音：
+  - 优先继续推进 `MediaCrawler`
+  - 因为它更适合作为抖音主适配器
+- 微博：
+  - 继续以 `gallery-dl` 为主
+- Bilibili：
+  - 继续以 `yt-dlp` 为主
+- 知乎：
+  - 未来需要站内深抓取时，优先考虑 `MediaCrawler`
 
 ## 站点语义外部发现兜底
 

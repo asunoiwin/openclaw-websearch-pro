@@ -15,19 +15,19 @@
     },
     "xiaohongshu.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "优先使用 xiaohongshu-mcp 本地服务获取内容详情；现在已支持 query 驱动的 search→detail 自动补齐 xsec_token。后续可继续接入 MediaCrawler 作为统一社媒适配层。"
+      "reason": "优先使用 xiaohongshu-mcp 本地服务获取内容详情；现在已支持 query 驱动的 search→detail 自动补齐 xsec_token。对当前环境，小红书以 xiaohongshu-mcp 为主路径，MediaCrawler 作为统一社媒层候选，不作为主路径。"
     },
     "douyin.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "优先使用本地 Douyin 解析项目（Python 3.11）或 MediaCrawler detail 模式获取视频详情；MediaCrawler 需要显式 cookie 文件。当前若 cookies 不新鲜、cookie 文件缺失或接口返回空内容，则回退到外部发现，并偏向 GitHub/skill/MCP/教程结果。"
+      "reason": "优先使用 MediaCrawler detail 模式获取视频详情；它支持 qrcode/cookie/CDP，适合作为抖音主适配器。本地 Douyin 解析项目保留为备选。当前若 cookies 不新鲜、cookie 文件缺失或接口返回空内容，则回退到外部发现，并偏向 GitHub/skill/MCP/教程结果。"
     },
     "bilibili.com": {
       "mode": "yt_dlp_or_custom_extract",
-      "reason": "二级视频页可用 yt-dlp 稳定提取元数据，优先于整页摘要。"
+      "reason": "二级视频页优先走 yt-dlp；当前比 MediaCrawler 更轻、更稳定，适合作为主路径。MediaCrawler 可在需要统一评论/创作者抓取时再引入。"
     },
     "weibo.com": {
       "mode": "gallery_or_external_adapter",
-      "reason": "匿名/访客系统干扰明显，但具体微博状态页可由 gallery-dl 提取结构化内容。"
+      "reason": "当前优先 gallery-dl；对真实微博状态页，它比 MediaCrawler 集成成本更低。MediaCrawler 更适合未来统一做搜索、评论和创作者主页抓取。"
     },
     "x.com": {
       "mode": "oembed_or_external_adapter",
@@ -35,7 +35,11 @@
     },
     "reddit.com": {
       "mode": "gallery_or_yt_dlp_or_domain_adapter",
-      "reason": "公开搜索页常被 403 或挑战页挡住；讨论帖正文优先走 gallery-dl，外链/媒体帖可走 yt-dlp + 浏览器 cookies。"
+      "reason": "公开搜索页常被 403 或挑战页挡住；讨论帖正文优先走 gallery-dl，外链/媒体帖可走 yt-dlp + 浏览器 cookies。MediaCrawler 不覆盖 Reddit，因此维持现有路径。"
+    },
+    "zhihu.com": {
+      "mode": "domain_or_mediacrawler_future",
+      "reason": "当前主链仍以域内重搜和结果页提取为主。MediaCrawler 原生支持知乎搜索、详情、评论和创作者主页，后续当需要站内深抓取时应优先考虑接入。"
     },
     "gitlab.com": {
       "mode": "external_until_authenticated",

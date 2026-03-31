@@ -35,6 +35,7 @@ The plugin now ships with:
 - `scripts/browser_auth_audit.py`
 - `scripts/web_content_distill.py`
 - `src/site-adapter-policy.json`
+- `docs/mediacrawler-adapter-matrix.md`
 
 This keeps the plugin portable and avoids hidden runtime dependencies on `workspace/scripts`.
 
@@ -223,6 +224,32 @@ Current specialized paths include:
   - Kubernetes Docs search
 
 When a target page is blocked or degraded, the orchestrator can synthesize a usable extraction by re-searching the same query with a domain restriction and converting the best results into structured evidence.
+
+## MediaCrawler adapter matrix
+
+`MediaCrawler` is not the universal default for every site. The local comparison is:
+
+- Xiaohongshu
+  - Keep `xiaohongshu-mcp` as primary.
+  - Reason: it already supports `search -> detail`, auto-resolves missing `xsec_token`, and returns richer note/comment payloads in the current environment.
+- Douyin
+  - Keep pushing `MediaCrawler` as primary candidate.
+  - Reason: it supports `qrcode / cookie / CDP`, and is a better long-term fit for authenticated in-site detail extraction than scattered scripts.
+- Weibo
+  - Keep `gallery-dl` as primary.
+  - Reason: state-page extraction is already simpler and more stable than switching to a new stack.
+- Bilibili
+  - Keep `yt-dlp` as primary.
+  - Reason: video detail extraction is already stable and lighter than migrating to `MediaCrawler`.
+- Zhihu
+  - Keep current domain-search path for now, but use `MediaCrawler` first if future work requires in-site detail/comments/creator crawling.
+- Reddit / X / GitHub / ecommerce sites
+  - Do not force `MediaCrawler`.
+  - Reason: it does not cover those sites, and the current adapters are a better fit.
+
+See:
+
+- `docs/mediacrawler-adapter-matrix.md`
 
 ## Browser session fallback
 

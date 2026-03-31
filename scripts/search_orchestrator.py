@@ -34,6 +34,7 @@ XHS_BINARY = Path(os.environ.get("OPENCLAW_XHS_BINARY", str(XHS_PROJECT / "xhs_m
 MEDIACRAWLER_VENV_PYTHON = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_PYTHON", str(MEDIACRAWLER_PROJECT / ".venv" / "bin" / "python")))
 DOUYIN_COOKIE_FILE = Path(os.environ.get("OPENCLAW_DOUYIN_COOKIE_FILE", "/Users/rico/.openclaw/workspace/secrets/douyin-cookie.txt"))
 MEDIACRAWLER_OUTPUT_BASE = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_OUTPUT_BASE", "/tmp/openclaw_mediacrawler"))
+MEDIACRAWLER_TIMEOUT_SECONDS = int(os.environ.get("OPENCLAW_MEDIACRAWLER_TIMEOUT_SECONDS", "45"))
 YT_DLP = ["python3", "-m", "yt_dlp"]
 GALLERY_DL = ["python3", "-m", "gallery_dl"]
 READER_FIRST_DOMAINS = {
@@ -983,7 +984,7 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
             cwd=str(MEDIACRAWLER_PROJECT),
             text=True,
             capture_output=True,
-            timeout=90,
+            timeout=MEDIACRAWLER_TIMEOUT_SECONDS,
         )
         if proc.returncode != 0:
             return None
@@ -995,6 +996,8 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
             payload = json.loads(candidates[-1].read_text(encoding="utf-8"))
         except Exception:
             return None
+    except subprocess.TimeoutExpired:
+        return None
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
     if isinstance(payload, list):

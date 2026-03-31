@@ -1543,6 +1543,28 @@ def test_producthunt_domain_fallback_prefers_slug_match():
     assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator"
 
 
+def test_producthunt_domain_fallback_uses_exact_slug_variant():
+    original = module.search_engine
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return []
+
+    module.search_engine = fake_search_engine
+    try:
+        module.extract_domain_search_fallback(
+            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "OpenClaw 搜索自动化",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    joined = " | ".join(seen_queries)
+    assert '"openclaw-search-orchestrator" site:producthunt.com' in joined
+
+
 def test_producthunt_external_discovery_prefers_slug_match():
     original = module.search_engine
     original_deep = module.deep_extract
@@ -1583,6 +1605,27 @@ def test_producthunt_external_discovery_prefers_slug_match():
 
     assert result is not None
     assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator"
+
+
+def test_producthunt_external_discovery_uses_exact_slug_variant():
+    original = module.search_engine
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return []
+
+    module.search_engine = fake_search_engine
+    try:
+        module.extract_external_discovery_fallback(
+            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "OpenClaw 搜索自动化",
+        )
+    finally:
+        module.search_engine = original
+
+    joined = " | ".join(seen_queries)
+    assert 'OpenClaw 搜索自动化 product hunt "openclaw-search-orchestrator"' in joined
 
 
 
@@ -1641,5 +1684,7 @@ if __name__ == "__main__":
     test_commerce_external_discovery_uses_product_suffixes()
     test_producthunt_domain_fallback_uses_producthunt_suffixes()
     test_producthunt_domain_fallback_prefers_slug_match()
+    test_producthunt_domain_fallback_uses_exact_slug_variant()
     test_producthunt_external_discovery_prefers_slug_match()
+    test_producthunt_external_discovery_uses_exact_slug_variant()
     print("search orchestrator regression tests passed")

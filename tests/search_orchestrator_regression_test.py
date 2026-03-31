@@ -691,6 +691,20 @@ def test_known_error_shell_triggers_fallback_for_pinduoduo_shell():
     assert 'known_error_shell' in result['applied_rules']
 
 
+def test_known_error_shell_detects_taobao_punish_page():
+    raw = """
+    <script>
+    sessionStorage.x5referer = window.location.href;
+    var url = window.location.protocol + "//jiantiseos.taobao.com//list/item/abc/_____tmd_____/punish?x5secdata=deadbeef";
+    </script>
+    """
+    assert module.looks_like_known_error_shell(
+        "",
+        raw,
+        "https://www.taobao.com/list/item/abc.htm",
+    ) is True
+
+
 def test_external_discovery_adds_extra_suffixes_for_xiaohongshu():
     original = module.search_engine
     seen_queries = []
@@ -832,6 +846,57 @@ def test_pinduoduo_search_cards_extractor():
     assert result["fetch_mode"] == "pinduoduo_search_cards"
     assert "pinduoduo_search_cards" in result["applied_rules"]
     assert len(result["summary"]) >= 2
+
+
+def test_taobao_item_meta_includes_price_review_and_spec_signals():
+    raw = """
+    <html><head>
+      <title>蓝牙耳机 官方旗舰店</title>
+      <meta name="description" content="主动降噪 蓝牙耳机 ￥299 1.2万条评价 官方旗舰店">
+    </head><body>
+      颜色分类: 星耀黑
+      套餐类型: 官方标配
+      1.2万条评价
+      ￥299
+      官方旗舰店
+    </body></html>
+    """
+    result = module.extract_taobao_special(
+        "https://www.taobao.com/list/item/123456.htm",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "taobao_item_meta"
+    joined = " | ".join(result["summary"])
+    assert "￥299" in joined
+    assert "评价" in joined
+    assert "颜色分类" in joined or "套餐类型" in joined
+
+
+def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
+    raw = """
+    <html><head>
+      <title>开放式蓝牙耳机</title>
+      <meta name="description" content="券后￥129 已售1.3万件 官方补贴">
+    </head><body>
+      规格: 充电仓版
+      已售1.3万件
+      官方补贴
+      券后￥129
+    </body></html>
+    """
+    result = module.extract_pinduoduo_special(
+        "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "pinduoduo_item_meta"
+    joined = " | ".join(result["summary"])
+    assert "￥129" in joined
+    assert "已售" in joined
+    assert "规格" in joined or "官方补贴" in joined
 
 
 def test_browser_session_fallback_rejects_wrong_page():

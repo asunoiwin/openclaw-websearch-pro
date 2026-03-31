@@ -457,6 +457,26 @@ def commerce_root_for_url(url: str) -> str:
     return root_domain(urllib.parse.urlparse(url).netloc.lower())
 
 
+def is_commerce_item_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    path = parsed.path.lower()
+    query = urllib.parse.parse_qs(parsed.query)
+    if root in {"taobao.com", "tmall.com"}:
+        if any(token in path for token in ("/item", "/detail", "/list/item/")):
+            return True
+        if path.endswith(".htm") and any(token in path for token in ("/item", "/list/")):
+            return True
+    if root in {"yangkeduo.com", "pinduoduo.com"}:
+        if any(token in path for token in ("/goods", "/goods.html", "/goods_detail")):
+            return True
+        if any(key in query for key in ("goods_id", "goodsID", "goods_id_list")):
+            return True
+    if root == "jd.com":
+        return "item.jd.com" in parsed.netloc.lower() and path.endswith(".html")
+    return False
+
+
 def extract_commerce_signals(text: str) -> List[str]:
     sample = clean(text)
     signals: List[str] = []
@@ -507,6 +527,34 @@ def commerce_result_bonus(title: str, snippet: str, query: str) -> float:
 def has_commerce_content_signal(lines: List[str]) -> bool:
     sample = " ".join(clean(line) for line in lines if line)
     return len(extract_commerce_signals(sample)) >= 1
+
+
+def extract_commerce_detail_summary(title: str, desc: str, raw: str) -> List[str]:
+    sample = clean(re.sub(r"<[^>]+>", " ", raw or ""))[:8000]
+    candidates: List[str] = []
+    if clean(title):
+        candidates.append(clean(title))
+    if clean(desc):
+        candidates.append(clean(desc)[:220])
+
+    detail_patterns = [
+        r"(?:¥|￥)\s?\d+(?:\.\d+)?",
+        r"\d+(?:,\d+)?条评价",
+        r"\d+(?:\.\d+)?万?\+?人付款",
+        r"\d+(?:\.\d+)?万?\+?已售",
+        r"(?:官方旗舰店|旗舰店|专营店|自营|官方补贴)",
+        r"(?:颜色分类|规格|型号|套餐类型|版本|尺码)\s*[:：]?\s*[^\s,，;；]{1,24}",
+    ]
+    seen = set(clean(value) for value in candidates if clean(value))
+    for pattern in detail_patterns:
+        for match in re.finditer(pattern, sample, re.I):
+            value = clean(match.group(0))
+            if not value or value in seen:
+                continue
+            seen.add(value)
+            candidates.append(value)
+            break
+    return candidates[:6]
 
 
 def is_actionable_non_product_query(query: str) -> bool:
@@ -679,6 +727,9 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
         or "page not found" in lowered_title
     ):
         return True
+    if domain in {"taobao.com", "tmall.com"}:
+        if "jiantiseos.taobao.com" in raw[:6000] or "_____tmd_____/punish" in raw[:6000] or "x5secdata=" in raw[:6000]:
+            return True
     if domain == "douyin.com":
         if re.search(r"<body>\s*</body>", raw[:5000], flags=re.I | re.S):
             return True
@@ -1873,7 +1924,7 @@ def extract_taobao_special(url: str, raw: str, query: str) -> Dict | None:
         text = " ".join(part for part in (title, desc) if part)
         if query_overlap_score(text, query) < 1 and not has_commerce_content_signal([text]):
             return None
-        summary = [part for part in (title, desc[:220] if desc else "") if part]
+        summary = extract_commerce_detail_summary(title, desc, raw)
         if not summary:
             return None
         return {
@@ -1916,7 +1967,7 @@ def extract_pinduoduo_special(url: str, raw: str, query: str) -> Dict | None:
         text = " ".join(part for part in (title, desc) if part)
         if query_overlap_score(text, query) < 1 and not has_commerce_content_signal([text]):
             return None
-        summary = [part for part in (title, desc[:220] if desc else "") if part]
+        summary = extract_commerce_detail_summary(title, desc, raw)
         if not summary:
             return None
         return {
@@ -2252,6 +2303,8 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                     item.score += 18
                 if (root or domain) in COMMERCE_ROOTS:
                     item.score += commerce_result_bonus(item.title, item.snippet, query)
+                    if is_commerce_item_url(item.url):
+                        item.score += 0.55
                 collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)
     useful = []
@@ -2270,6 +2323,8 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
             if looks_like_generic_site_blurb(item.title, [item.snippet], query) and not signals:
                 continue
             if is_homepage_like(item.url) and overlap < 1 and not signals:
+                continue
+            if looks_like_search_or_shell_url(item.url) and not is_commerce_item_url(item.url) and not signals:
                 continue
         useful.append(item)
         if len(useful) >= 5:

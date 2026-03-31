@@ -827,8 +827,10 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
             return True
     if domain == "yangkeduo.com":
         if "风靡全国的拼团商城" in raw[:6000] or "优质商品新鲜直供" in raw[:6000]:
-            return True
-        if lowered_title == "拼多多" and "/search_result" in urllib.parse.urlparse(url).path:
+            path = urllib.parse.urlparse(url).path.lower()
+            if any(token in path for token in ("/search_result", "/goods", "/goods.html")):
+                return True
+        if lowered_title == "拼多多" and any(token in urllib.parse.urlparse(url).path.lower() for token in ("/search_result", "/goods", "/goods.html")):
             return True
     return False
 

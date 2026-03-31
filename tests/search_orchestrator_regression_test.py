@@ -691,6 +691,19 @@ def test_known_error_shell_triggers_fallback_for_pinduoduo_shell():
     assert 'known_error_shell' in result['applied_rules']
 
 
+def test_known_error_shell_detects_pinduoduo_goods_brand_shell():
+    raw = """
+    <html><head><title>拼多多</title>
+    <meta property="og:description" content="风靡全国的拼团商城，优质商品新鲜直供，快来一起拼多多吧">
+    </head><body>拼多多商城</body></html>
+    """
+    assert module.looks_like_known_error_shell(
+        "拼多多",
+        raw,
+        "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+    ) is True
+
+
 def test_known_error_shell_detects_taobao_punish_page():
     raw = """
     <script>

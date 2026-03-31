@@ -181,7 +181,8 @@ SITE_FALLBACK_ORDER = {
     "taobao.com": ("domain", "external", "browser"),
     "tmall.com": ("domain", "external", "browser"),
     "jd.com": ("domain", "external", "browser"),
-    "yangkeduo.com": ("external", "domain", "browser"),
+    "yangkeduo.com": ("domain", "external", "browser"),
+    "pinduoduo.com": ("domain", "external", "browser"),
 }
 YTDLP_SUPPORTED_ROOTS = {
     "bilibili.com",
@@ -2174,7 +2175,11 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
     variant = f"{query} site:{root or domain}"
     variants = [variant]
     focus = next((key for key in SITE_QUERY_SUFFIXES if key in domain or key in root), None)
-    if focus:
+    commerce_root = root or domain
+    if commerce_root in COMMERCE_ROOTS and not is_actionable_non_product_query(query):
+        for suffix in ("商品", "价格", "销量", "购买"):
+            variants.append(f"{query} {suffix} site:{root or domain}")
+    elif focus:
         for suffix in SITE_QUERY_SUFFIXES.get(focus, []):
             variants.append(f"{query} {suffix} site:{root or domain}")
     collected: List[SearchResult] = []
@@ -2200,13 +2205,32 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                 continue
         elif domain not in item_domain:
             continue
+        if commerce_root in COMMERCE_ROOTS:
+            combined = f"{item.title} {item.snippet}"
+            overlap = query_overlap_score(combined, query)
+            signals = extract_commerce_signals(combined)
+            if looks_like_generic_site_blurb(item.title, [item.snippet], query) and not signals:
+                continue
+            if is_homepage_like(item.url) and overlap < 1 and not signals:
+                continue
         useful.append(item)
         if len(useful) >= 5:
             break
     if len(useful) < 1:
         return None
-    commerce_root = root or domain
     useful.sort(key=lambda item: (is_homepage_like(item.url), -url_path_depth(item.url), -item.score))
+    if commerce_root in COMMERCE_ROOTS:
+        meaningful = 0
+        for item in useful:
+            combined = f"{item.title} {item.snippet}"
+            path = urllib.parse.urlparse(item.url).path.lower()
+            item_like = any(token in path for token in ("/goods", "goods.html", "/item", "item.html", "/detail"))
+            if is_homepage_like(item.url) and not item_like:
+                continue
+            if query_overlap_score(combined, query) >= 1 or item_like:
+                meaningful += 1
+        if meaningful == 0:
+            return None
     deep_hits = []
     if follow_depth:
         for item in useful[:3]:
@@ -2274,7 +2298,12 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
         return None
     focus = next((key for key in SITE_QUERY_SUFFIXES if key in domain or key in root), None)
     queries = [f"{query} {brand}"]
-    if focus:
+    if root in COMMERCE_ROOTS and not is_actionable_non_product_query(query):
+        queries.extend(
+            f"{query} {brand} {suffix}"
+            for suffix in ("商品", "价格", "测评", "推荐")
+        )
+    elif focus:
         queries.extend(f"{query} {brand} {suffix}" for suffix in SITE_QUERY_SUFFIXES.get(focus, []))
     for suffix in EXTERNAL_DISCOVERY_EXTRA_SUFFIXES.get(root, []):
         queries.append(f"{query} {brand} {suffix}")
@@ -2486,6 +2515,7 @@ def score_result(item: SearchResult, query: str) -> float:
     overlap = sum(1 for token in dict.fromkeys(tokens) if token in hay)
     score = overlap * 10
     domain = urllib.parse.urlparse(item.url).netloc.lower()
+    root = root_domain(domain)
     if item.site_focus in domain:
         score += 18
     if "github.com" in domain:
@@ -2498,6 +2528,12 @@ def score_result(item: SearchResult, query: str) -> float:
         score += 3
     if any(token in hay for token in ("readme", "install", "教程", "指南", "文档", "skill", "plugin")):
         score += 4
+    if root in COMMERCE_ROOTS:
+        path = urllib.parse.urlparse(item.url).path.lower()
+        if any(token in path for token in ("/goods", "goods.html", "/item", "item.html", "/detail")):
+            score += 8
+        if is_homepage_like(item.url):
+            score -= 8
     return score
 
 

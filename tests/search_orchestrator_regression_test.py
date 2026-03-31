@@ -1354,6 +1354,125 @@ def test_product_query_keeps_domain_priority_on_commerce_sites():
     assert result["fetch_mode"] == "domain_search_fallback"
 
 
+def test_commerce_domain_fallback_skips_generic_homepage_like_results():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "拼多多 新电商开创者",
+                "https://www.yangkeduo.com/",
+                "风靡全国的拼团商城，优质商品新鲜直供",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "蓝牙耳机",
+                "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+                "蓝牙耳机 券后¥89 已拼2.1万件 官方补贴",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback(
+            "https://mobile.yangkeduo.com/search_result.html?search_key=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+            "蓝牙耳机",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] == "domain_search_fallback"
+    assert result["links"][0]["href"].startswith("https://mobile.yangkeduo.com/goods.html")
+
+
+def test_commerce_domain_fallback_uses_product_suffixes():
+    original = module.search_engine
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return []
+
+    module.search_engine = fake_search_engine
+    try:
+        module.extract_domain_search_fallback(
+            "https://mobile.yangkeduo.com/search_result.html?search_key=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+            "蓝牙耳机",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    joined = " | ".join(seen_queries)
+    assert "蓝牙耳机 商品 site:yangkeduo.com" in joined
+    assert "蓝牙耳机 价格 site:yangkeduo.com" in joined
+
+
+def test_commerce_domain_fallback_returns_none_for_generic_channel_pages():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "拼多多9块9特卖",
+                "https://www.yangkeduo.com/home/sale/",
+                "每日精选超值折扣商品拼团9.9包邮",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "拼多多 新电商开创者",
+                "https://www.yangkeduo.com/",
+                "风靡全国的拼团商城，优质商品新鲜直供",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback(
+            "https://mobile.yangkeduo.com/search_result.html?search_key=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+            "蓝牙耳机",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is None
+
+
+def test_commerce_external_discovery_uses_product_suffixes():
+    original = module.search_engine
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return []
+
+    module.search_engine = fake_search_engine
+    try:
+        module.extract_external_discovery_fallback(
+            "https://mobile.yangkeduo.com/search_result.html?search_key=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+            "蓝牙耳机",
+        )
+    finally:
+        module.search_engine = original
+
+    joined = " | ".join(seen_queries)
+    assert "蓝牙耳机 拼多多 商品" in joined
+    assert "蓝牙耳机 拼多多 测评" in joined
+
+
 
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
@@ -1402,4 +1521,8 @@ if __name__ == "__main__":
     test_commerce_deep_fallback_rejects_non_product_tutorial_content()
     test_actionable_non_product_query_prefers_external_on_commerce_sites()
     test_product_query_keeps_domain_priority_on_commerce_sites()
+    test_commerce_domain_fallback_skips_generic_homepage_like_results()
+    test_commerce_domain_fallback_uses_product_suffixes()
+    test_commerce_domain_fallback_returns_none_for_generic_channel_pages()
+    test_commerce_external_discovery_uses_product_suffixes()
     print("search orchestrator regression tests passed")

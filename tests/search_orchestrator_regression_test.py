@@ -1473,6 +1473,29 @@ def test_commerce_external_discovery_uses_product_suffixes():
     assert "蓝牙耳机 拼多多 测评" in joined
 
 
+def test_producthunt_domain_fallback_uses_producthunt_suffixes():
+    original = module.search_engine
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return []
+
+    module.search_engine = fake_search_engine
+    try:
+        module.extract_domain_search_fallback(
+            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "OpenClaw 搜索自动化",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    joined = " | ".join(seen_queries)
+    assert "OpenClaw 搜索自动化 Product Hunt site:producthunt.com" in joined
+    assert "OpenClaw 搜索自动化 posts site:producthunt.com" in joined
+
+
 
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
@@ -1525,4 +1548,5 @@ if __name__ == "__main__":
     test_commerce_domain_fallback_uses_product_suffixes()
     test_commerce_domain_fallback_returns_none_for_generic_channel_pages()
     test_commerce_external_discovery_uses_product_suffixes()
+    test_producthunt_domain_fallback_uses_producthunt_suffixes()
     print("search orchestrator regression tests passed")

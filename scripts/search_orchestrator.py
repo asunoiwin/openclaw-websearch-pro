@@ -128,6 +128,7 @@ SITE_QUERY_SUFFIXES = {
     "tieba": ["帖子", "吧", "讨论"],
     "x": ["thread", "post", "discussion"],
     "gitlab": ["repo", "project", "issue"],
+    "producthunt": ["Product Hunt", "products", "posts"],
     "36kr": ["资讯", "报道", "文章"],
     "taobao": ["教程", "安装", "购买"],
     "jd": ["教程", "安装", "购买"],
@@ -2522,7 +2523,7 @@ def score_result(item: SearchResult, query: str) -> float:
         score += 12
     if "clawhub.com" in domain:
         score += 16
-    if any(domain.endswith(site) for site in ("zhihu.com", "xiaohongshu.com", "douyin.com", "reddit.com")):
+    if any(domain.endswith(site) for site in ("zhihu.com", "xiaohongshu.com", "douyin.com", "reddit.com", "producthunt.com")):
         score += 8
     if item.snippet:
         score += 3

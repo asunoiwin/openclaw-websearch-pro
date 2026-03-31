@@ -830,6 +830,8 @@ def test_jd_search_cards_extractor():
     assert result["fetch_mode"] == "jd_search_cards"
     assert "jd_search_cards" in result["applied_rules"]
     assert len(result["summary"]) >= 2
+    levels = [section["level"] for section in result["sections"]]
+    assert "price" in levels
 
 
 def test_jd_search_cards_extractor_skips_verify_page():
@@ -899,6 +901,9 @@ def test_taobao_search_cards_extractor():
     assert result["fetch_mode"] == "taobao_search_cards"
     assert "taobao_search_cards" in result["applied_rules"]
     assert len(result["summary"]) >= 2
+    levels = [section["level"] for section in result["sections"]]
+    assert "price" in levels
+    assert "sales" in levels
 
 
 def test_pinduoduo_search_cards_extractor():
@@ -919,6 +924,9 @@ def test_pinduoduo_search_cards_extractor():
     assert result["fetch_mode"] == "pinduoduo_search_cards"
     assert "pinduoduo_search_cards" in result["applied_rules"]
     assert len(result["summary"]) >= 2
+    levels = [section["level"] for section in result["sections"]]
+    assert "price" in levels
+    assert "sales" in levels
 
 
 def test_taobao_item_meta_includes_price_review_and_spec_signals():

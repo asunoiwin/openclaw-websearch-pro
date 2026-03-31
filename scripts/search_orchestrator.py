@@ -710,6 +710,27 @@ def extract_commerce_detail_sections(summary: List[str]) -> List[Dict[str, str]]
     return sections[:8]
 
 
+def extract_commerce_search_card_sections(summary: List[str]) -> List[Dict[str, str]]:
+    sections: List[Dict[str, str]] = []
+    for line in summary:
+        item = clean(line)
+        if not item:
+            continue
+        matched = False
+        if re.search(r"(?:¥|￥)\s?\d+(?:\.\d+)?", item):
+            sections.append({"level": "price", "text": item[:220]})
+            matched = True
+        if "付款" in item or "已拼" in item or "已售" in item:
+            sections.append({"level": "sales", "text": item[:220]})
+            matched = True
+        if any(token in item for token in ("旗舰店", "天猫", "自营", "官方补贴", "店铺")):
+            sections.append({"level": "shop", "text": item[:220]})
+            matched = True
+        if not matched:
+            sections.append({"level": "result", "text": item[:220]})
+    return sections[:8]
+
+
 def is_actionable_non_product_query(query: str) -> bool:
     sample = clean(query).lower()
     tokens = [
@@ -2110,12 +2131,13 @@ def extract_jd_search_special(url: str, raw: str, query: str) -> Dict | None:
     cards = extract_commerce_search_cards_from_raw(raw, query, ("京东价", "评价", "自营", "到手价", "券", "好评"))
     if not cards:
         return None
+    sections = extract_commerce_search_card_sections(cards)
     return {
         "url": url,
         "fetch_mode": "jd_search_cards",
         "title": title or "JD Search",
         "summary": cards[:5],
-        "sections": [{"level": "results", "text": line[:120]} for line in cards[:5]],
+        "sections": sections,
         "links": [],
         "quality": "high" if len(cards) >= 3 else "medium",
         "applied_rules": ["jd_search_cards"],
@@ -2208,12 +2230,13 @@ def extract_taobao_special(url: str, raw: str, query: str) -> Dict | None:
     cards = extract_commerce_search_cards_from_raw(raw, query, ("人付款", "旗舰店", "天猫", "包邮", "优惠券"))
     if not cards:
         return None
+    sections = extract_commerce_search_card_sections(cards)
     return {
         "url": url,
         "fetch_mode": "taobao_search_cards",
         "title": title or "Taobao Search",
         "summary": cards[:5],
-        "sections": [{"level": "results", "text": line[:120]} for line in cards[:5]],
+        "sections": sections,
         "links": [],
         "quality": "high" if len(cards) >= 3 else "medium",
         "applied_rules": ["taobao_search_cards"],
@@ -2252,12 +2275,13 @@ def extract_pinduoduo_special(url: str, raw: str, query: str) -> Dict | None:
     cards = extract_commerce_search_cards_from_raw(raw, query, ("已拼", "券后", "好评", "官方补贴", "店"))
     if not cards:
         return None
+    sections = extract_commerce_search_card_sections(cards)
     return {
         "url": url,
         "fetch_mode": "pinduoduo_search_cards",
         "title": title or "Pinduoduo Search",
         "summary": cards[:5],
-        "sections": [{"level": "results", "text": line[:120]} for line in cards[:5]],
+        "sections": sections,
         "links": [],
         "quality": "high" if len(cards) >= 3 else "medium",
         "applied_rules": ["pinduoduo_search_cards"],

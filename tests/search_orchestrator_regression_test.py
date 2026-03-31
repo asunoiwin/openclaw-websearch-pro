@@ -1801,6 +1801,42 @@ def test_commerce_external_discovery_dedupes_repeated_zhihu_results():
     assert len(zhihu_links) == 1
 
 
+def test_commerce_external_discovery_prefers_price_or_review_sources():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "拼多多上的耳机怎么这么便宜？上面的耳机真的能买吗？ - 知乎",
+                "https://www.zhihu.com/question/387634838",
+                "百元以内蓝牙耳机推荐",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "拼多多耳机\\耳麦价格和优惠券 - 值值值",
+                "https://www.zhizhizhi.com/c/ermai/shop/pinduoduo",
+                "优惠券 比价",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+            "蓝牙耳机",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["links"][0]["href"] == "https://www.zhizhizhi.com/c/ermai/shop/pinduoduo"
+
+
 def test_producthunt_domain_fallback_uses_producthunt_suffixes():
     original = module.search_engine
     seen_queries = []

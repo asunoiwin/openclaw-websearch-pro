@@ -942,6 +942,31 @@ def test_taobao_item_meta_includes_price_review_and_spec_signals():
     assert "颜色分类" in joined or "套餐类型" in joined
 
 
+def test_taobao_chanpin_meta_includes_price_review_and_spec_signals():
+    raw = """
+    <html><head>
+      <title>蓝牙耳机-蓝牙耳机促销价格、蓝牙耳机品牌 - 淘宝</title>
+      <meta name="description" content="淘宝为你找到蓝牙耳机相关商品，￥159，1.1万人付款，官方旗舰店">
+    </head><body>
+      颜色分类: 曜石黑
+      套餐类型: 官方标配
+      1.1万人付款
+      ￥159
+      官方旗舰店
+    </body></html>
+    """
+    result = module.extract_taobao_special(
+        "https://www.taobao.com/chanpin/fb64ddac6d0226c8c05858fa1593e6b3.html",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "taobao_item_meta"
+    joined = " | ".join(result["summary"])
+    assert "￥159" in joined
+    assert "官方旗舰店" in joined
+
+
 def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
     raw = """
     <html><head>

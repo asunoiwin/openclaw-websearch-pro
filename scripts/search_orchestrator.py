@@ -2135,7 +2135,7 @@ def extract_taobao_special(url: str, raw: str, query: str) -> Dict | None:
     path = parsed.path.lower()
     title = extract_title_value(raw)
     desc = extract_meta_value(raw, ("description", "og:description", "twitter:description"))
-    if any(token in path for token in ("/item", "/detail")):
+    if any(token in path for token in ("/item", "/detail", "/chanpin/")):
         text = " ".join(part for part in (title, desc) if part)
         if query_overlap_score(text, query) < 1 and not has_commerce_content_signal([text]):
             return None

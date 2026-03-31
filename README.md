@@ -221,8 +221,9 @@ Current specialized paths include:
   - `xhs_adapter_bootstrap_blocked`: local Go service is still blocked in dependency bootstrap and has not become healthy yet
   - `xhs_adapter_login_required`: local service is up but the account is not logged in
 - Douyin runtime blockers
+  - `mediacrawler_douyin_profile`: preferred path; reuse MediaCrawler's persistent logged-in browser profile and extract detail text/metadata from the real video page DOM
   - `douyin_cookie_file_missing`: MediaCrawler path is available but no explicit Douyin cookie file was provided
-  - `douyin_mediacrawler_probe_failed`: MediaCrawler path was attempted but did not return usable detail content
+  - `douyin_mediacrawler_probe_failed`: cookie-based MediaCrawler detail path was attempted but did not return usable detail content
   - when in-site pages are shells, error pages, or unreadable JS apps, external discovery now biases toward `GitHub / skill / MCP / tutorial / automation` results instead of generic platform blurbs
 - Search result pages
   - Google
@@ -242,8 +243,12 @@ When a target page is blocked or degraded, the orchestrator can synthesize a usa
   - Keep `xiaohongshu-mcp` as primary.
   - Reason: it already supports `search -> detail`, auto-resolves missing `xsec_token`, and returns richer note/comment payloads in the current environment.
 - Douyin
-  - Keep pushing `MediaCrawler` as primary candidate.
-  - Reason: it supports `qrcode / cookie / CDP`, and is a better long-term fit for authenticated in-site detail extraction than scattered scripts.
+  - Use `MediaCrawler` as primary.
+  - Preferred order:
+    - persistent logged-in profile DOM extraction
+    - cookie-based detail
+    - external discovery fallback
+  - Reason: the persistent profile path now returns usable title/description from real video pages on this machine, while cookie detail remains a secondary fallback.
 - Weibo
   - Keep `gallery-dl` as primary.
   - Reason: state-page extraction is already simpler and more stable than switching to a new stack.

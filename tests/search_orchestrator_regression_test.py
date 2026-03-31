@@ -322,6 +322,79 @@ def test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json():
         module.subprocess.run = original_run
 
 
+def test_sanitize_douyin_profile_text_drops_missing_video_shell():
+    raw = "你要观看的视频不存在 广告投放 用户服务协议 网络谣言曝光台"
+    assert module.sanitize_douyin_profile_text(raw) == ""
+
+
+def test_build_douyin_profile_result_uses_description_when_body_is_shell():
+    payload = {
+        "title": "在抖音记录美好生活20260331 - 抖音",
+        "description": "于20260331发布在抖音，已经收获了0个喜欢，来抖音，记录美好生活！",
+        "text": "你要观看的视频不存在 广告投放 用户服务协议",
+        "headings": [],
+    }
+    result = module.build_douyin_profile_result(
+        "https://www.douyin.com/video/7488202296297166114",
+        "OpenClaw 自动化",
+        payload,
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "mediacrawler_douyin_profile"
+    assert "mediacrawler_douyin_profile" in result["applied_rules"]
+    assert "persistent_profile_login" in result["applied_rules"]
+    assert result["summary"]
+
+
+def test_mediacrawler_douyin_profile_adapter_uses_persistent_profile():
+    original_available = module.mediacrawler_available
+    original_python = module.MEDIACRAWLER_VENV_PYTHON
+    original_project = module.MEDIACRAWLER_PROJECT
+    original_template = module.DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE
+    original_run = module.subprocess.run
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            project = base / "MediaCrawler"
+            profile_dir = project / "browser_data" / "dy_user_data_dir_clone_dy"
+            profile_dir.mkdir(parents=True)
+            fake_python = base / "python"
+            fake_python.write_text("", encoding="utf-8")
+            fake_python.chmod(0o755)
+
+            class FakeProc:
+                def __init__(self):
+                    self.returncode = 0
+                    self.stdout = '{"title":"在抖音记录美好生活20260331 - 抖音","description":"于20260331发布在抖音，已经收获了0个喜欢，来抖音，记录美好生活！","text":"你要观看的视频不存在 广告投放 用户服务协议","headings":[]}\n'
+                    self.stderr = ""
+
+            def fake_run(cmd, cwd=None, text=True, capture_output=True, timeout=35):
+                assert cmd[0] == str(fake_python)
+                assert cmd[1] == "-c"
+                return FakeProc()
+
+            module.mediacrawler_available = lambda: True
+            module.MEDIACRAWLER_VENV_PYTHON = fake_python
+            module.MEDIACRAWLER_PROJECT = project
+            module.DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE = "dy_user_data_dir_clone_%s"
+            module.subprocess.run = fake_run
+
+            result = module.extract_mediacrawler_douyin_profile_special(
+                "https://www.douyin.com/video/7488202296297166114",
+                "OpenClaw 自动化",
+            )
+
+            assert result is not None
+            assert result["fetch_mode"] == "mediacrawler_douyin_profile"
+            assert "persistent_profile_login" in result["applied_rules"]
+    finally:
+        module.mediacrawler_available = original_available
+        module.MEDIACRAWLER_VENV_PYTHON = original_python
+        module.MEDIACRAWLER_PROJECT = original_project
+        module.DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE = original_template
+        module.subprocess.run = original_run
+
+
 def test_mediacrawler_tieba_adapter_uses_search_output_json():
     original_available = module.mediacrawler_available
     original_cookie_file = module.TIEBA_COOKIE_FILE
@@ -550,6 +623,9 @@ def test_known_error_shell_triggers_fallback_for_xiaohongshu():
 def test_known_error_shell_triggers_fallback_for_douyin_empty_body():
     original_fetch = module.fetch_with_reader_fallback
     original_run_fallbacks = module.run_fallbacks
+    original_profile = module.extract_mediacrawler_douyin_profile_special
+    original_cookie = module.extract_mediacrawler_douyin_special
+    original_project = module.extract_douyin_project_special
 
     def fake_fetch(url):
         return '<html><head><meta charset=\"UTF-8\" /></head><body></body></html>', 'direct'
@@ -568,11 +644,17 @@ def test_known_error_shell_triggers_fallback_for_douyin_empty_body():
 
     module.fetch_with_reader_fallback = fake_fetch
     module.run_fallbacks = fake_run_fallbacks
+    module.extract_mediacrawler_douyin_profile_special = lambda url, query: None
+    module.extract_mediacrawler_douyin_special = lambda url, query: None
+    module.extract_douyin_project_special = lambda url, query: None
     try:
         result = module.deep_extract('https://www.douyin.com/video/demo', 'OpenClaw 优化')
     finally:
         module.fetch_with_reader_fallback = original_fetch
         module.run_fallbacks = original_run_fallbacks
+        module.extract_mediacrawler_douyin_profile_special = original_profile
+        module.extract_mediacrawler_douyin_special = original_cookie
+        module.extract_douyin_project_special = original_project
 
     assert result['fetch_mode'] == 'external_discovery_fallback'
     assert 'known_error_shell' in result['applied_rules']
@@ -1285,6 +1367,9 @@ if __name__ == "__main__":
     test_yt_dlp_adapter_for_reddit_content_page()
     test_load_cookie_file_normalizes_prefix()
     test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json()
+    test_sanitize_douyin_profile_text_drops_missing_video_shell()
+    test_build_douyin_profile_result_uses_description_when_body_is_shell()
+    test_mediacrawler_douyin_profile_adapter_uses_persistent_profile()
     test_mediacrawler_tieba_adapter_uses_search_output_json()
     test_gallery_dl_adapter_for_reddit_submission()
     test_twitter_oembed_adapter_for_text_status()

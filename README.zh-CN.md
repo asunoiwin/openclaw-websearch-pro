@@ -225,8 +225,9 @@
   - 当站内页是壳层、错页或重 JS 不可读时，外部发现会优先偏向 `GitHub / skill / MCP / 教程 / 自动化` 结果，而不是只返回泛平台介绍
   - `xhs_adapter_bootstrap_blocked` 表示本地小红书 Go 服务还卡在依赖启动阶段，尚未进入可用状态
   - `xhs_adapter_login_required` 表示本地小红书服务已经起来，但账号未登录
+  - `mediacrawler_douyin_profile` 表示优先复用 MediaCrawler 已登录的持久化浏览器资料目录，直接从真实视频页 DOM 提取标题、描述和正文片段
   - `douyin_cookie_file_missing` 表示 MediaCrawler 抖音路径已经可用，但没有提供显式的抖音 cookie 文件
-  - `douyin_mediacrawler_probe_failed` 表示 MediaCrawler 抖音 detail 路径已经尝试运行，但没有返回可用正文
+  - `douyin_mediacrawler_probe_failed` 表示 MediaCrawler 抖音 cookie-detail 路径已经尝试运行，但没有返回可用正文
 - 搜索结果页
   - Google
   - Baidu

@@ -27,7 +27,7 @@
     },
     "douyin.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "优先使用 MediaCrawler detail 模式获取视频详情；它支持 qrcode/cookie/CDP，适合作为抖音主适配器。本地 Douyin 解析项目保留为备选。当前若 cookies 不新鲜、cookie 文件缺失或接口返回空内容，则回退到外部发现，并偏向 GitHub/skill/MCP/教程结果。"
+      "reason": "优先使用 MediaCrawler 已登录持久化资料目录直接打开真实视频页并提取 DOM 中的标题/描述；cookie-detail 路径保留为次级回退。本地 Douyin 解析项目继续作为备选。当前若 profile 不存在、cookie 文件缺失或 detail 返回空内容，则回退到外部发现，并偏向 GitHub/skill/MCP/教程结果。"
     },
     "bilibili.com": {
       "mode": "yt_dlp_or_custom_extract",

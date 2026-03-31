@@ -34,6 +34,7 @@ XHS_BINARY = Path(os.environ.get("OPENCLAW_XHS_BINARY", str(XHS_PROJECT / "xhs_m
 MEDIACRAWLER_VENV_PYTHON = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_PYTHON", str(MEDIACRAWLER_PROJECT / ".venv" / "bin" / "python")))
 DOUYIN_COOKIE_FILE = Path(os.environ.get("OPENCLAW_DOUYIN_COOKIE_FILE", "/Users/rico/.openclaw/workspace/secrets/douyin-cookie.txt"))
 TIEBA_COOKIE_FILE = Path(os.environ.get("OPENCLAW_TIEBA_COOKIE_FILE", "/Users/rico/.openclaw/workspace/secrets/tieba-cookie.txt"))
+DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE = os.environ.get("OPENCLAW_DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE", "dy_user_data_dir_clone_%s")
 MEDIACRAWLER_OUTPUT_BASE = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_OUTPUT_BASE", "/tmp/openclaw_mediacrawler"))
 MEDIACRAWLER_TIMEOUT_SECONDS = int(os.environ.get("OPENCLAW_MEDIACRAWLER_TIMEOUT_SECONDS", "45"))
 YT_DLP = ["python3", "-m", "yt_dlp"]
@@ -1044,6 +1045,119 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
         "quality": "high" if len(summary) >= 2 else "medium",
         "applied_rules": ["mediacrawler_douyin", "cookie_file_login"],
     }
+
+
+def sanitize_douyin_profile_text(text: str) -> str:
+    sample = clean(text)
+    if not sample:
+        return ""
+    if "你要观看的视频不存在" in sample:
+        return ""
+    markers = [
+        "广告投放 用户服务协议",
+        "网络谣言曝光台",
+        "违法和不良信息举报",
+        "京ICP备16016397号",
+        "下载抖音 抖音电商",
+        "开启读屏标签",
+    ]
+    for marker in markers:
+        if marker in sample:
+            sample = sample.split(marker, 1)[0].strip()
+    return clean(sample[:1600])
+
+
+def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | None:
+    if not isinstance(payload, dict):
+        return None
+    title = clean(payload.get("title", ""))
+    description = clean(payload.get("description", ""))
+    body_text = sanitize_douyin_profile_text(payload.get("text", ""))
+    summary = summarize_text(" ".join(part for part in (description, body_text) if part), query)
+    if not summary and description:
+        summary = [description[:280]]
+    if not summary and title:
+        summary = [title[:280]]
+    if not summary:
+        return None
+    sections = []
+    if description:
+        sections.append({"level": "meta", "text": description[:220]})
+    for heading in payload.get("headings", [])[:5]:
+        heading = clean(heading)
+        if heading:
+            sections.append({"level": "heading", "text": heading[:160]})
+    quality = "high" if body_text and len(summary) >= 2 else "medium"
+    return {
+        "url": url,
+        "fetch_mode": "mediacrawler_douyin_profile",
+        "title": title or "Douyin Video",
+        "summary": summary[:5],
+        "sections": sections[:8],
+        "links": [],
+        "quality": quality,
+        "applied_rules": ["mediacrawler_douyin_profile", "persistent_profile_login"],
+    }
+
+
+def extract_mediacrawler_douyin_profile_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root != "douyin.com" or "/video/" not in parsed.path.lower():
+        return None
+    if not mediacrawler_available():
+        return None
+    profile_dir = MEDIACRAWLER_PROJECT / "browser_data" / (DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE % "dy")
+    if not profile_dir.exists():
+        return None
+    js = """() => ({
+      title: document.title || '',
+      url: location.href,
+      text: ((document.body && document.body.innerText) || '').split('\\n').join(' ').replace(/\\s+/g,' ').trim().slice(0,3000),
+      description: (document.querySelector('meta[name="description"]') && document.querySelector('meta[name="description"]').content) || '',
+      headings: Array.from(document.querySelectorAll('h1,h2,h3')).slice(0,8).map(el => el.innerText.trim()),
+    })"""
+    code = f"""
+import asyncio, json, config
+from playwright.async_api import async_playwright
+from media_platform.douyin.core import DouYinCrawler
+VIDEO = {json.dumps(url)}
+JS = {json.dumps(js)}
+async def main():
+    config.PLATFORM='dy'
+    config.HEADLESS=True
+    config.ENABLE_CDP_MODE=False
+    config.SAVE_LOGIN_STATE=True
+    config.USER_DATA_DIR={json.dumps(DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE)}
+    crawler = DouYinCrawler()
+    async with async_playwright() as playwright:
+        chromium = playwright.chromium
+        crawler.browser_context = await crawler.launch_browser(chromium, None, None, headless=True)
+        page = await crawler.browser_context.new_page()
+        await page.goto(VIDEO)
+        await asyncio.sleep(4)
+        payload = await page.evaluate(JS)
+        print(json.dumps(payload, ensure_ascii=False))
+        await crawler.browser_context.close()
+asyncio.run(main())
+"""
+    try:
+        proc = subprocess.run(
+            [str(MEDIACRAWLER_VENV_PYTHON), "-c", code],
+            cwd=str(MEDIACRAWLER_PROJECT),
+            text=True,
+            capture_output=True,
+            timeout=35,
+        )
+        if proc.returncode != 0:
+            return None
+        lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        if not lines:
+            return None
+        payload = json.loads(lines[-1])
+    except Exception:
+        return None
+    return build_douyin_profile_result(url, query, payload)
 
 
 def extract_mediacrawler_tieba_special(url: str, query: str) -> Dict | None:
@@ -2558,6 +2672,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         or extract_reddit_special(url, query)
         or extract_twitter_oembed_special(url, query)
         or extract_xhs_mcp_special(url, query)
+        or extract_mediacrawler_douyin_profile_special(url, query)
         or extract_mediacrawler_douyin_special(url, query)
         or extract_mediacrawler_tieba_special(url, query)
         or extract_douyin_project_special(url, query)

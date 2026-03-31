@@ -44,17 +44,19 @@
 ### 抖音
 
 - 当前路径：
+  - `MediaCrawler persistent profile DOM extract`
   - `MediaCrawler detail`
   - 本地 Douyin 项目备用
 - 当前状态：
   - 二维码登录链有效
-  - 已能从 `MediaCrawler` 浏览器资料目录导出 fresh cookies
-  - 但 detail 仍未稳定产出结构化正文
+  - 已能复用 `MediaCrawler` 浏览器资料目录直接打开真实视频页
+  - profile 路径已能稳定返回标题和 meta description
+  - cookie detail 仍作为次级回退
 - 结论：
   - 当前环境 **优先继续推进 `MediaCrawler`**
 - 原因：
   - 它支持 `qrcode / cookie / CDP`
-  - 能复用本地浏览器与自己的持久化浏览器资料目录
+  - 能复用自己的持久化浏览器资料目录
   - 比零散脚本更适合作为抖音主适配器
 
 ### 微博

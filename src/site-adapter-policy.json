@@ -13,6 +13,14 @@
       "mode": "domain_or_custom_extract",
       "reason": "浏览器页常返回空正文或帮助链接，适合域内重搜或专属结果提取器。"
     },
+    "pinduoduo.com": {
+      "mode": "custom_extract_or_external",
+      "reason": "拼多多壳页和泛平台介绍很多，优先使用站内卡片/商品专属提取；拿不到真实结果时再回退到站外发现。"
+    },
+    "yangkeduo.com": {
+      "mode": "custom_extract_or_external",
+      "reason": "拼多多壳页和泛平台介绍很多，优先使用站内卡片/商品专属提取；拿不到真实结果时再回退到站外发现。"
+    },
     "xiaohongshu.com": {
       "mode": "external_or_custom_adapter",
       "reason": "优先使用 xiaohongshu-mcp 本地服务获取内容详情；现在已支持 query 驱动的 search→detail 自动补齐 xsec_token。对当前环境，小红书以 xiaohongshu-mcp 为主路径，MediaCrawler 作为统一社媒层候选，不作为主路径。"
@@ -46,12 +54,12 @@
       "reason": "当前主链已不是停在搜索页，而是能继续跟进知乎详情页并返回 domain_search_deep_fallback。实测 MediaCrawler 在本机完成二维码登录后能抓到搜索结果和评论，但登录态无法稳定在无头复跑中复用，因此暂不切为主路径。后续只有在 cookie 复用稳定后才切换。"
     },
     "gitlab.com": {
-      "mode": "external_until_authenticated",
-      "reason": "未登录或验证时优先站外发现，登录链稳定后再接专属提取。"
+      "mode": "meta_or_external",
+      "reason": "公开项目和 issue 页现在优先用站内 meta 提取；命中登录页、验证页或私有资源时再回退到站外发现。"
     },
     "producthunt.com": {
-      "mode": "domain_deep_fallback",
-      "reason": "当前域内深跟进已经可用，专属器不是最高优先级。"
+      "mode": "meta_or_domain_deep_fallback",
+      "reason": "公开产品页现在优先用站内 meta 提取；搜索页和弱页继续保留域内深跟进回退。"
     }
   }
 }

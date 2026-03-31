@@ -211,6 +211,12 @@
   - 当命中真实微博状态页时，可通过 `gallery-dl` 提取结构化内容
 - X / Twitter 状态页
   - 纯文本推文优先走官方 `oEmbed`，不依赖浏览器登录态
+- GitLab 公共项目 / Issue 页
+  - 会优先用站内 meta 提取标题和描述；只有命中登录页、验证页或私有资源时才回退
+- Product Hunt 产品页
+  - 会优先用站内 meta 提取产品标题和简介；搜索页继续保留域内深跟进
+- 淘宝 / 拼多多 搜索页
+  - 现在会优先尝试抽商品卡片样式摘要，而不是直接做整页摘要
 - Tieba 搜索页
   - 现在会优先走 `MediaCrawler` 的 Tieba 搜索适配器
   - 当 MediaCrawler 没有拿到帖子结果时，再安全回退到通用搜索链
@@ -387,6 +393,10 @@ python3 scripts/browser_session_bridge.py close-front safari
 - 贴吧：
   - 当前以 `MediaCrawler` 搜索适配器为主
   - 原因是它已经能作为站内搜索主路径运行，并在没有帖子结果时安全回退
+- GitLab：
+  - 当前以站内 meta 提取为主，登录/验证失败时再回退到站外发现
+- Product Hunt：
+  - 当前以站内 meta 提取为主，搜索页和弱页保留域内深跟进
 
 ## 站点语义外部发现兜底
 

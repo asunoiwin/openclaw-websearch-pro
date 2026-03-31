@@ -666,6 +666,82 @@ def test_jd_item_meta_extractor():
     assert "jd_item_meta" in result["applied_rules"]
 
 
+def test_gitlab_meta_extractor():
+    raw = """
+    <html><head>
+      <title>openclaw / search-orchestrator · GitLab</title>
+      <meta property="og:title" content="openclaw / search-orchestrator · GitLab">
+      <meta name="description" content="Unified search adapter for OpenClaw with issue tracking and CI.">
+    </head></html>
+    """
+    result = module.extract_gitlab_special(
+        "https://gitlab.com/openclaw/search-orchestrator",
+        raw,
+        "openclaw search orchestrator",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "gitlab_meta"
+    assert "gitlab_meta" in result["applied_rules"]
+
+
+def test_producthunt_meta_extractor():
+    raw = """
+    <html><head>
+      <title>OpenClaw Search Orchestrator - Product Hunt</title>
+      <meta property="og:title" content="OpenClaw Search Orchestrator - Product Hunt">
+      <meta name="description" content="Unified search automation for OpenClaw, with deep extraction and retry search.">
+    </head></html>
+    """
+    result = module.extract_producthunt_special(
+        "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+        raw,
+        "openclaw search automation",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "producthunt_meta"
+    assert "producthunt_meta" in result["applied_rules"]
+
+
+def test_taobao_search_cards_extractor():
+    raw = """
+    <html><head><title>蓝牙耳机 - 淘宝搜索</title></head>
+    <body>
+      蓝牙耳机 官方旗舰店 ¥199 2.3万人付款 包邮
+      主动降噪蓝牙耳机 天猫 ¥299 1.1万人付款 优惠券
+      运动蓝牙耳机 自营 ¥159 8500人付款 包邮
+    </body></html>
+    """
+    result = module.extract_taobao_special(
+        "https://s.taobao.com/search?q=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "taobao_search_cards"
+    assert "taobao_search_cards" in result["applied_rules"]
+    assert len(result["summary"]) >= 2
+
+
+def test_pinduoduo_search_cards_extractor():
+    raw = """
+    <html><head><title>蓝牙耳机 - 拼多多搜索</title></head>
+    <body>
+      蓝牙耳机 爆款券后¥89 已拼2.1万件 官方补贴
+      运动蓝牙耳机 券后¥59 已拼9800件 好评如潮
+      开放式蓝牙耳机 券后¥129 已拼1.3万件 店铺热卖
+    </body></html>
+    """
+    result = module.extract_pinduoduo_special(
+        "https://mobile.yangkeduo.com/search_result.html?search_key=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "pinduoduo_search_cards"
+    assert "pinduoduo_search_cards" in result["applied_rules"]
+    assert len(result["summary"]) >= 2
+
+
 def test_browser_session_fallback_rejects_wrong_page():
     original_status = module.run_json
 
@@ -1217,6 +1293,10 @@ if __name__ == "__main__":
     test_known_error_shell_triggers_fallback_for_pinduoduo_shell()
     test_external_discovery_adds_extra_suffixes_for_xiaohongshu()
     test_external_discovery_prefers_actionable_domains()
+    test_gitlab_meta_extractor()
+    test_producthunt_meta_extractor()
+    test_taobao_search_cards_extractor()
+    test_pinduoduo_search_cards_extractor()
     test_browser_session_fallback_rejects_wrong_page()
     test_browser_session_fallback_rejects_shell_without_query_overlap()
     test_browser_auth_audit_prefers_authenticated_safari()

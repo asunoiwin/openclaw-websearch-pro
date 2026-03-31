@@ -1655,6 +1655,200 @@ def extract_jd_item_special(url: str, raw: str, query: str) -> Dict | None:
     }
 
 
+def extract_meta_value(raw: str, keys: Tuple[str, ...]) -> str:
+    for key in keys:
+        pattern = re.compile(
+            rf'<meta[^>]+(?:name|property)=["\']{re.escape(key)}["\'][^>]+content=["\'](.*?)["\']',
+            re.I | re.S,
+        )
+        match = pattern.search(raw)
+        if match:
+            value = clean(html.unescape(match.group(1)))
+            if value:
+                return value
+    return ""
+
+
+def extract_title_value(raw: str) -> str:
+    match = re.search(r"<title>(.*?)</title>", raw, re.I | re.S)
+    if not match:
+        return ""
+    return clean(re.sub(r"<[^>]+>", " ", html.unescape(match.group(1))))
+
+
+def extract_commerce_search_cards_from_raw(raw: str, query: str, required_markers: Tuple[str, ...]) -> List[str]:
+    sample = clean(re.sub(r"<[^>]+>", " ", raw))
+    if not sample:
+        return []
+    price_matches = list(re.finditer(r"(?:¥|￥)\s?\d+(?:\.\d+)?", sample))
+    if not price_matches:
+        return []
+    boundaries = [0]
+    for left_match, right_match in zip(price_matches, price_matches[1:]):
+        boundaries.append((left_match.start() + right_match.start()) // 2)
+    boundaries.append(len(sample))
+    results: List[str] = []
+    seen = set()
+    for idx, match in enumerate(price_matches[:18]):
+        left = max(0, boundaries[idx] - 40)
+        right = boundaries[idx + 1]
+        chunk = clean(sample[left:right])
+        if not chunk:
+            continue
+        if required_markers and not any(marker in chunk for marker in required_markers):
+            continue
+        if query_overlap_score(chunk, query) < 1:
+            continue
+        line = chunk[:240]
+        if line in seen:
+            continue
+        seen.add(line)
+        results.append(line)
+        if len(results) >= 5:
+            break
+    return results
+
+
+def extract_taobao_special(url: str, raw: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root not in {"taobao.com", "tmall.com"}:
+        return None
+    path = parsed.path.lower()
+    title = extract_title_value(raw)
+    desc = extract_meta_value(raw, ("description", "og:description", "twitter:description"))
+    if any(token in path for token in ("/item", "/detail")):
+        text = " ".join(part for part in (title, desc) if part)
+        if query_overlap_score(text, query) < 1 and not has_commerce_content_signal([text]):
+            return None
+        summary = [part for part in (title, desc[:220] if desc else "") if part]
+        if not summary:
+            return None
+        return {
+            "url": url,
+            "fetch_mode": "taobao_item_meta",
+            "title": title or "Taobao Item",
+            "summary": summary[:5],
+            "sections": [],
+            "links": [],
+            "quality": "high" if len(summary) >= 2 else "medium",
+            "applied_rules": ["taobao_item_meta"],
+        }
+    looks_like_search = any(token in path for token in ("/search", "/s")) or "q=" in parsed.query
+    if not looks_like_search:
+        return None
+    cards = extract_commerce_search_cards_from_raw(raw, query, ("人付款", "旗舰店", "天猫", "包邮", "优惠券"))
+    if not cards:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "taobao_search_cards",
+        "title": title or "Taobao Search",
+        "summary": cards[:5],
+        "sections": [{"level": "results", "text": line[:120]} for line in cards[:5]],
+        "links": [],
+        "quality": "high" if len(cards) >= 3 else "medium",
+        "applied_rules": ["taobao_search_cards"],
+    }
+
+
+def extract_pinduoduo_special(url: str, raw: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root not in {"yangkeduo.com", "pinduoduo.com"}:
+        return None
+    path = parsed.path.lower()
+    title = extract_title_value(raw)
+    desc = extract_meta_value(raw, ("description", "og:description", "twitter:description"))
+    if any(token in path for token in ("/goods", "/goods.html")):
+        text = " ".join(part for part in (title, desc) if part)
+        if query_overlap_score(text, query) < 1 and not has_commerce_content_signal([text]):
+            return None
+        summary = [part for part in (title, desc[:220] if desc else "") if part]
+        if not summary:
+            return None
+        return {
+            "url": url,
+            "fetch_mode": "pinduoduo_item_meta",
+            "title": title or "Pinduoduo Item",
+            "summary": summary[:5],
+            "sections": [],
+            "links": [],
+            "quality": "high" if len(summary) >= 2 else "medium",
+            "applied_rules": ["pinduoduo_item_meta"],
+        }
+    looks_like_search = any(token in path for token in ("/search", "/search_result")) or "search_key=" in parsed.query
+    if not looks_like_search:
+        return None
+    cards = extract_commerce_search_cards_from_raw(raw, query, ("已拼", "券后", "好评", "官方补贴", "店"))
+    if not cards:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "pinduoduo_search_cards",
+        "title": title or "Pinduoduo Search",
+        "summary": cards[:5],
+        "sections": [{"level": "results", "text": line[:120]} for line in cards[:5]],
+        "links": [],
+        "quality": "high" if len(cards) >= 3 else "medium",
+        "applied_rules": ["pinduoduo_search_cards"],
+    }
+
+
+def extract_gitlab_special(url: str, raw: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    if root_domain(parsed.netloc.lower()) != "gitlab.com":
+        return None
+    if "/users/sign_in" in parsed.path.lower():
+        return None
+    title = extract_meta_value(raw, ("og:title", "twitter:title")) or extract_title_value(raw)
+    desc = extract_meta_value(raw, ("description", "og:description", "twitter:description"))
+    text = " ".join(part for part in (title, desc) if part)
+    if not text or query_overlap_score(text, query) < 1:
+        return None
+    summary = summarize_text(text, query) or [part for part in (title, desc[:220] if desc else "") if part]
+    if not summary:
+        return None
+    sections = [{"level": "meta", "text": desc[:220]}] if desc else []
+    return {
+        "url": url,
+        "fetch_mode": "gitlab_meta",
+        "title": title or "GitLab",
+        "summary": summary[:5],
+        "sections": sections[:6],
+        "links": [],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["gitlab_meta"],
+    }
+
+
+def extract_producthunt_special(url: str, raw: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    if root_domain(parsed.netloc.lower()) != "producthunt.com":
+        return None
+    path = parsed.path.lower()
+    if not any(token in path for token in ("/posts/", "/products/")):
+        return None
+    title = extract_meta_value(raw, ("og:title", "twitter:title")) or extract_title_value(raw)
+    desc = extract_meta_value(raw, ("description", "og:description", "twitter:description"))
+    text = " ".join(part for part in (title, desc) if part)
+    if not text or query_overlap_score(text, query) < 1:
+        return None
+    summary = summarize_text(text, query) or [part for part in (title, desc[:220] if desc else "") if part]
+    if not summary:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "producthunt_meta",
+        "title": title or "Product Hunt",
+        "summary": summary[:5],
+        "sections": [{"level": "meta", "text": desc[:220]}] if desc else [],
+        "links": [],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["producthunt_meta"],
+    }
+
+
 def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower()
@@ -2379,6 +2573,14 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         if fallback_result:
             return fallback_result
         return with_rules({"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}, "unavailable")
+    site_special = (
+        extract_taobao_special(url, raw, query)
+        or extract_pinduoduo_special(url, raw, query)
+        or extract_gitlab_special(url, raw, query)
+        or extract_producthunt_special(url, raw, query)
+    )
+    if site_special:
+        return site_special
     search_special = extract_search_page_special(url, raw, query)
     if search_special:
         return search_special

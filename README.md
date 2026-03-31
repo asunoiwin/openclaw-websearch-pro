@@ -206,6 +206,12 @@ Current specialized paths include:
   - can use `gallery-dl` to extract structured post metadata from real status pages
 - X / Twitter status URLs
   - can use official `oEmbed` for public text posts without a browser session
+- GitLab public project / issue pages
+  - prefer in-site meta extraction first, and only fall back when the page is a login wall, challenge page, or private resource
+- Product Hunt product pages
+  - prefer in-site meta extraction first, while search pages still keep domain-deep fallback
+- Taobao / Pinduoduo search pages
+  - now prefer product-card style extraction instead of whole-page summaries
 - Tieba search pages
   - now prefer a `MediaCrawler` Tieba search adapter first
   - when MediaCrawler returns no post results, the orchestrator falls back safely to the generic search chain
@@ -251,6 +257,12 @@ When a target page is blocked or degraded, the orchestrator can synthesize a usa
 - Tieba
   - Use `MediaCrawler` search as primary.
   - Reason: it already fits Tieba's search-oriented workflow, and the orchestrator can fall back cleanly when no posts are returned.
+- GitLab
+  - Use in-site meta extraction as primary for public pages.
+  - Reason: public project and issue pages expose enough title/description metadata without forcing browser login.
+- Product Hunt
+  - Use in-site meta extraction as primary for public product pages.
+  - Reason: public product pages expose enough metadata while search pages still benefit from domain-deep fallback.
 - Reddit / X / GitHub / ecommerce sites
   - Do not force `MediaCrawler`.
   - Reason: it does not cover those sites, and the current adapters are a better fit.

@@ -500,6 +500,76 @@ def extract_commerce_signals(text: str) -> List[str]:
     return signals[:5]
 
 
+def extract_json_ld_objects(raw: str) -> List[dict]:
+    if not raw:
+        return []
+    matches = re.findall(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        raw,
+        flags=re.I | re.S,
+    )
+    objects: List[dict] = []
+    for match in matches[:6]:
+        payload = clean(match)
+        if not payload:
+            continue
+        try:
+            data = json.loads(payload)
+        except Exception:
+            continue
+        queue = data if isinstance(data, list) else [data]
+        for item in queue:
+            if isinstance(item, dict):
+                objects.append(item)
+    return objects
+
+
+def extract_commerce_structured_fields(raw: str) -> List[str]:
+    fields: List[str] = []
+    seen = set()
+    for item in extract_json_ld_objects(raw):
+        name = clean(str(item.get("name", "")))
+        sku = clean(str(item.get("sku", "")))
+        if sku and sku not in seen:
+            seen.add(sku)
+            fields.append(f"SKU {sku}")
+        offers = item.get("offers")
+        offer_list = offers if isinstance(offers, list) else ([offers] if isinstance(offers, dict) else [])
+        for offer in offer_list[:2]:
+            price = clean(str(offer.get("price", "")))
+            currency = clean(str(offer.get("priceCurrency", "")))
+            seller = offer.get("seller")
+            if price:
+                value = f"{currency} {price}".strip()
+                value = value.replace("CNY ", "¥ ").replace("RMB ", "¥ ")
+                if value not in seen:
+                    seen.add(value)
+                    fields.append(value)
+            if isinstance(seller, dict):
+                seller_name = clean(str(seller.get("name", "")))
+                if seller_name and seller_name not in seen:
+                    seen.add(seller_name)
+                    fields.append(seller_name)
+        rating = item.get("aggregateRating")
+        if isinstance(rating, dict):
+            review_count = clean(str(rating.get("reviewCount", "")))
+            rating_value = clean(str(rating.get("ratingValue", "")))
+            if review_count:
+                label = f"{review_count}条评价"
+                if label not in seen:
+                    seen.add(label)
+                    fields.append(label)
+            if rating_value:
+                label = f"{rating_value}分"
+                if label not in seen:
+                    seen.add(label)
+                    fields.append(label)
+        if name and name not in seen:
+            seen.add(name)
+            fields.append(name)
+    return fields[:6]
+
+
 def format_commerce_line(title: str, snippet: str, url: str) -> str:
     title = clean(title)
     snippet = clean(snippet)
@@ -536,6 +606,9 @@ def extract_commerce_detail_summary(title: str, desc: str, raw: str) -> List[str
         candidates.append(clean(title))
     if clean(desc):
         candidates.append(clean(desc)[:220])
+    for field in extract_commerce_structured_fields(raw):
+        if field not in candidates:
+            candidates.append(field)
 
     detail_patterns = [
         r"(?:¥|￥)\s?\d+(?:\.\d+)?",

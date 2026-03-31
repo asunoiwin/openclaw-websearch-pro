@@ -899,6 +899,28 @@ def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
     assert "规格" in joined or "官方补贴" in joined
 
 
+def test_commerce_detail_summary_reads_json_ld_fields():
+    raw = """
+    <html><head>
+      <script type="application/ld+json">
+      {
+        "@context":"https://schema.org",
+        "@type":"Product",
+        "name":"OpenClaw 蓝牙耳机",
+        "sku":"SKU-1234",
+        "offers":{"@type":"Offer","price":"299.00","priceCurrency":"CNY","seller":{"name":"官方旗舰店"}},
+        "aggregateRating":{"@type":"AggregateRating","ratingValue":"4.9","reviewCount":"1288"}
+      }
+      </script>
+    </head><body></body></html>
+    """
+    summary = module.extract_commerce_detail_summary("OpenClaw 蓝牙耳机", "", raw)
+    joined = " | ".join(summary)
+    assert "SKU-1234" in joined
+    assert "299.00" in joined or "¥ 299.00" in joined or "¥299.00" in joined
+    assert "1288条评价" in joined
+
+
 def test_browser_session_fallback_rejects_wrong_page():
     original_status = module.run_json
 

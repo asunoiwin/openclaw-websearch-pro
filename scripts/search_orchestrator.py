@@ -1444,6 +1444,28 @@ def extract_douyin_profile_stats(text: str) -> List[str]:
     return results[:5]
 
 
+def extract_douyin_publish_markers(text: str) -> List[str]:
+    sample = clean(text)
+    if not sample:
+        return []
+    patterns = [
+        r"于\d{6,8}发布在抖音",
+        r"\d{4}-\d{2}-\d{2}\s*发布",
+        r"\d{4}/\d{2}/\d{2}\s*发布",
+    ]
+    results: List[str] = []
+    seen = set()
+    for pattern in patterns:
+        match = re.search(pattern, sample)
+        if not match:
+            continue
+        value = clean(match.group(0))
+        if value and value not in seen:
+            seen.add(value)
+            results.append(value)
+    return results[:3]
+
+
 def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | None:
     if not isinstance(payload, dict):
         return None
@@ -1451,6 +1473,7 @@ def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | N
     description = clean(payload.get("description", ""))
     body_text = sanitize_douyin_profile_text(payload.get("text", ""))
     stats = extract_douyin_profile_stats(" ".join(part for part in (description, body_text) if part))
+    publish_markers = extract_douyin_publish_markers(" ".join(part for part in (description, body_text) if part))
     for field, label in (
         ("like_count", "like_count"),
         ("liked_count", "liked_count"),
@@ -1482,10 +1505,26 @@ def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | N
     if not summary:
         return None
     sections = []
+    if title:
+        sections.append({"level": "title", "text": title[:220]})
     if description:
         sections.append({"level": "meta", "text": description[:220]})
+    for marker in publish_markers:
+        sections.append({"level": "time", "text": marker})
     if stats:
-        sections.append({"level": "meta", "text": " | ".join(stats)})
+        for stat in stats:
+            level = "meta"
+            if any(token in stat for token in ("喜欢", "赞", "like_count", "liked_count")):
+                level = "likes"
+            elif any(token in stat for token in ("评论", "comment_count")):
+                level = "comments"
+            elif any(token in stat for token in ("分享", "share_count")):
+                level = "shares"
+            elif any(token in stat for token in ("收藏", "collect_count", "collected_count")):
+                level = "collects"
+            elif any(token in stat for token in ("播放", "play_count", "看过")):
+                level = "plays"
+            sections.append({"level": level, "text": stat})
     for heading in payload.get("headings", [])[:5]:
         heading = clean(heading)
         if heading:

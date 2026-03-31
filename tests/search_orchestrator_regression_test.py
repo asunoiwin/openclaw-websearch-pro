@@ -335,6 +335,11 @@ def test_extract_douyin_profile_stats():
     assert "9次收藏" in stats
 
 
+def test_extract_douyin_publish_markers():
+    markers = module.extract_douyin_publish_markers("于20260331发布在抖音，已经收获了12个喜欢")
+    assert "于20260331发布在抖音" in markers
+
+
 def test_build_douyin_profile_result_uses_description_when_body_is_shell():
     payload = {
         "title": "在抖音记录美好生活20260331 - 抖音",
@@ -357,6 +362,31 @@ def test_build_douyin_profile_result_uses_description_when_body_is_shell():
     assert "12个喜欢" in joined
     assert "collect_count=9" in joined
     assert any("12个喜欢" in section.get("text", "") for section in result["sections"])
+    section_levels = [section["level"] for section in result["sections"]]
+    assert "time" in section_levels
+    assert "likes" in section_levels
+    assert "collects" in section_levels
+
+
+def test_build_douyin_profile_result_classifies_multiple_stat_sections():
+    payload = {
+        "title": "OpenClaw 自动化演示 - 抖音",
+        "description": "于20260401发布在抖音，已经收获了12个喜欢 3条评论 1次分享 9次收藏 2.3万次播放",
+        "text": "OpenClaw 自动化演示",
+        "headings": [],
+    }
+    result = module.build_douyin_profile_result(
+        "https://www.douyin.com/video/demo",
+        "OpenClaw 自动化",
+        payload,
+    )
+    assert result is not None
+    levels = [section["level"] for section in result["sections"]]
+    assert "likes" in levels
+    assert "comments" in levels
+    assert "shares" in levels
+    assert "collects" in levels
+    assert "plays" in levels
 
 
 def test_mediacrawler_douyin_profile_adapter_uses_persistent_profile():

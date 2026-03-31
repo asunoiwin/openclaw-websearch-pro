@@ -613,13 +613,27 @@ def commerce_external_source_bonus(url: str, title: str, snippet: str) -> float:
     item_root = root_domain(parsed.netloc.lower())
     combined = clean(f"{title} {snippet}")
     bonus = 0.0
-    if item_root in {"zhizhizhi.com", "smzdm.com", "zol.com.cn"}:
-        bonus += 0.18
+    if item_root == "zhizhizhi.com":
+        bonus += 0.28
+    elif item_root in {"smzdm.com", "zol.com.cn"}:
+        bonus += 0.22
     if item_root in {"bilibili.com"} and any(token in combined for token in ("测评", "评测", "开箱")):
         bonus += 0.14
     if any(token in combined for token in ("优惠券", "到手价", "价格", "测评", "评测", "推荐")):
         bonus += 0.08
     return bonus
+
+
+def commerce_external_source_penalty(url: str, title: str, snippet: str) -> float:
+    parsed = urllib.parse.urlparse(url)
+    item_root = root_domain(parsed.netloc.lower())
+    combined = clean(f"{title} {snippet}")
+    penalty = 0.0
+    if item_root == "zhihu.com":
+        penalty += 0.08
+        if any(token in combined for token in ("能买吗", "怎么这么便宜", "值不值得", "好用吗")):
+            penalty += 0.18
+    return penalty
 
 
 def has_commerce_content_signal(lines: List[str]) -> bool:
@@ -2653,6 +2667,7 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                     if has_brand_context(f"{item.title} {item.snippet} {item.url}", brand):
                         item.score += 0.22
                     item.score += commerce_external_source_bonus(item.url, item.title, item.snippet)
+                    item.score -= commerce_external_source_penalty(item.url, item.title, item.snippet)
                     item.score -= commerce_external_penalty(item.url)
                 collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)

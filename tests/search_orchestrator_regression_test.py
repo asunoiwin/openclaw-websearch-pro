@@ -673,6 +673,48 @@ def test_known_error_shell_triggers_fallback_for_douyin_empty_body():
     assert 'known_error_shell' in result['applied_rules']
 
 
+def test_deep_extract_merges_douyin_profile_and_detail_results():
+    original_profile = module.extract_mediacrawler_douyin_profile_special
+    original_detail = module.extract_mediacrawler_douyin_special
+    original_project = module.extract_douyin_project_special
+    original_fetch = module.fetch_with_reader_fallback
+    try:
+        module.extract_mediacrawler_douyin_profile_special = lambda url, query: {
+            "url": url,
+            "fetch_mode": "mediacrawler_douyin_profile",
+            "title": "抖音视频",
+            "summary": ["0个喜欢"],
+            "sections": [{"level": "meta", "text": "0个喜欢"}],
+            "links": [],
+            "quality": "medium",
+            "applied_rules": ["mediacrawler_douyin_profile"],
+        }
+        module.extract_mediacrawler_douyin_special = lambda url, query: {
+            "url": url,
+            "fetch_mode": "mediacrawler_douyin",
+            "title": "抖音视频",
+            "summary": ["author: 测试作者"],
+            "sections": [{"level": "meta", "text": "author: 测试作者"}],
+            "links": [{"label": "cover_url", "url": "https://example.com/c.jpg"}],
+            "quality": "medium",
+            "applied_rules": ["mediacrawler_douyin", "cookie_file_login"],
+        }
+        module.extract_douyin_project_special = lambda url, query: None
+        module.fetch_with_reader_fallback = lambda url: ("", "direct")
+        result = module.deep_extract("https://www.douyin.com/video/demo", "OpenClaw 自动化")
+    finally:
+        module.extract_mediacrawler_douyin_profile_special = original_profile
+        module.extract_mediacrawler_douyin_special = original_detail
+        module.extract_douyin_project_special = original_project
+        module.fetch_with_reader_fallback = original_fetch
+
+    assert result["fetch_mode"] == "mediacrawler_douyin_profile"
+    assert "0个喜欢" in " | ".join(result["summary"])
+    assert "author: 测试作者" in " | ".join(result["summary"])
+    assert any(link.get("href") == "https://example.com/c.jpg" for link in result["links"])
+    assert "cookie_file_login" in result["applied_rules"]
+
+
 def test_known_error_shell_triggers_fallback_for_pinduoduo_shell():
     original_fetch = module.fetch_with_reader_fallback
     original_run_fallbacks = module.run_fallbacks

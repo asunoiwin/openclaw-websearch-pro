@@ -731,6 +731,59 @@ def extract_commerce_search_card_sections(summary: List[str]) -> List[Dict[str, 
     return sections[:8]
 
 
+def merge_extraction_results(primary: Dict | None, secondary: Dict | None) -> Dict | None:
+    if primary and not secondary:
+        return primary
+    if secondary and not primary:
+        return secondary
+    if not primary and not secondary:
+        return None
+    assert primary is not None and secondary is not None
+    result = dict(primary)
+    summary = []
+    seen_summary = set()
+    for source in (primary.get("summary") or [], secondary.get("summary") or []):
+        item = clean(str(source))
+        if not item or item in seen_summary:
+            continue
+        seen_summary.add(item)
+        summary.append(item)
+    sections = []
+    seen_sections = set()
+    for section in list(primary.get("sections") or []) + list(secondary.get("sections") or []):
+        if not isinstance(section, dict):
+            continue
+        level = clean(str(section.get("level", "")))
+        text = clean(str(section.get("text", "")))
+        key = (level, text)
+        if not text or key in seen_sections:
+            continue
+        seen_sections.add(key)
+        sections.append({"level": level or "meta", "text": text})
+    links = []
+    seen_links = set()
+    for link in list(primary.get("links") or []) + list(secondary.get("links") or []):
+        if not isinstance(link, dict):
+            continue
+        href = clean(str(link.get("href", "") or link.get("url", "")))
+        text = clean(str(link.get("text", "") or link.get("label", "")))
+        key = (href, text)
+        if not href or key in seen_links:
+            continue
+        seen_links.add(key)
+        if "href" in link or "text" in link:
+            links.append({"text": text or href, "href": href})
+        else:
+            links.append({"label": text or href, "url": href})
+    quality = "high" if "high" in {primary.get("quality"), secondary.get("quality")} else primary.get("quality") or secondary.get("quality") or "medium"
+    result["summary"] = summary[:6]
+    result["sections"] = sections[:10]
+    result["links"] = links[:10]
+    result["quality"] = quality
+    result["applied_rules"] = list(dict.fromkeys(list(primary.get("applied_rules") or []) + list(secondary.get("applied_rules") or [])))
+    return result
+
+
 def is_actionable_non_product_query(query: str) -> bool:
     sample = clean(query).lower()
     tokens = [
@@ -3167,21 +3220,25 @@ def normalize_reader_text(text: str) -> Tuple[str, str]:
 
 
 def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
-    special = (
-        extract_github_special(url, query)
-        or extract_reddit_special(url, query)
-        or extract_twitter_oembed_special(url, query)
-        or extract_xhs_mcp_special(url, query)
-        or extract_mediacrawler_douyin_profile_special(url, query)
-        or extract_mediacrawler_douyin_special(url, query)
-        or extract_mediacrawler_tieba_special(url, query)
-        or extract_douyin_project_special(url, query)
-        or extract_gallery_dl_special(url, query)
-        or extract_yt_dlp_special(url, query)
-    )
+    parsed = urllib.parse.urlparse(url)
+    if root_domain(parsed.netloc.lower()) == "douyin.com" and "/video/" in parsed.path.lower():
+        profile = extract_mediacrawler_douyin_profile_special(url, query)
+        detail = extract_mediacrawler_douyin_special(url, query)
+        project = extract_douyin_project_special(url, query)
+        special = merge_extraction_results(merge_extraction_results(profile, detail), project)
+    else:
+        special = (
+            extract_github_special(url, query)
+            or extract_reddit_special(url, query)
+            or extract_twitter_oembed_special(url, query)
+            or extract_xhs_mcp_special(url, query)
+            or extract_mediacrawler_tieba_special(url, query)
+            or extract_gallery_dl_special(url, query)
+            or extract_yt_dlp_special(url, query)
+        )
     if special:
         return special
-    domain = urllib.parse.urlparse(url).netloc.lower()
+    domain = parsed.netloc.lower()
     raw, mode = fetch_with_reader_fallback(url)
     if not raw:
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)

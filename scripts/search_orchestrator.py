@@ -557,6 +557,16 @@ def target_slug_value(url: str) -> str:
     return clean(path.split("/")[-1].lower())
 
 
+def normalized_target_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(url)
+    scheme = parsed.scheme or "https"
+    netloc = parsed.netloc.lower()
+    path = parsed.path.rstrip("/")
+    if not path:
+        path = "/"
+    return urllib.parse.urlunparse((scheme, netloc, path, "", "", ""))
+
+
 def fallback_order_for_url(url: str) -> Tuple[str, ...]:
     domain = urllib.parse.urlparse(url).netloc.lower()
     root = root_domain(domain)
@@ -2207,6 +2217,10 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
     commerce_root = root or domain
     slug_terms = target_slug_terms(url) if root == "producthunt.com" else []
     slug_value = target_slug_value(url) if root == "producthunt.com" else ""
+    target_url = normalized_target_url(url) if root == "producthunt.com" else ""
+    if target_url:
+        variants.append(f'"{target_url}"')
+        variants.append(f'"{target_url}" site:{root or domain}')
     if commerce_root in COMMERCE_ROOTS and not is_actionable_non_product_query(query):
         for suffix in ("商品", "价格", "销量", "购买"):
             variants.append(f"{query} {suffix} site:{root or domain}")
@@ -2229,6 +2243,9 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                 seen.add(key)
                 item.score = score_result(item, query)
                 item_url_lower = item.url.lower()
+                item_url_normalized = normalized_target_url(item.url)
+                if target_url and item_url_normalized == target_url:
+                    item.score += 80
                 if slug_value and slug_value in item_url_lower:
                     item.score += 40
                 if slug_terms and query_overlap_score(f"{item.title} {item.snippet} {item.url}", " ".join(slug_terms)) >= min(2, len(slug_terms)):
@@ -2340,7 +2357,11 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
     focus = next((key for key in SITE_QUERY_SUFFIXES if key in domain or key in root), None)
     slug_terms = target_slug_terms(url) if root == "producthunt.com" else []
     slug_value = target_slug_value(url) if root == "producthunt.com" else ""
+    target_url = normalized_target_url(url) if root == "producthunt.com" else ""
     queries = [f"{query} {brand}"]
+    if target_url:
+        queries.append(f'"{target_url}"')
+        queries.append(f'{query} {brand} "{target_url}"')
     if root in COMMERCE_ROOTS and not is_actionable_non_product_query(query):
         queries.extend(
             f"{query} {brand} {suffix}"
@@ -2365,6 +2386,9 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                 seen.add(key)
                 item.score = score_result(item, query)
                 item_url_lower = item.url.lower()
+                item_url_normalized = normalized_target_url(item.url)
+                if target_url and item_url_normalized == target_url:
+                    item.score += 80
                 if slug_value and slug_value in item_url_lower:
                     item.score += 40
                 if slug_terms and query_overlap_score(f"{item.title} {item.snippet} {item.url}", " ".join(slug_terms)) >= min(2, len(slug_terms)):

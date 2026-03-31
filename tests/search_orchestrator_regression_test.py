@@ -1563,6 +1563,9 @@ def test_producthunt_domain_fallback_uses_exact_slug_variant():
 
     joined = " | ".join(seen_queries)
     assert '"openclaw-search-orchestrator" site:producthunt.com' in joined
+    assert '"https://www.producthunt.com/posts/openclaw-search-orchestrator"' in joined
+    assert seen_queries[0] == 'OpenClaw 搜索自动化 site:producthunt.com'
+    assert seen_queries[1] == '"https://www.producthunt.com/posts/openclaw-search-orchestrator"'
 
 
 def test_producthunt_external_discovery_prefers_slug_match():
@@ -1626,6 +1629,46 @@ def test_producthunt_external_discovery_uses_exact_slug_variant():
 
     joined = " | ".join(seen_queries)
     assert 'OpenClaw 搜索自动化 product hunt "openclaw-search-orchestrator"' in joined
+    assert '"https://www.producthunt.com/posts/openclaw-search-orchestrator"' in joined
+    assert seen_queries[0] == "OpenClaw 搜索自动化 product hunt"
+    assert seen_queries[1] == '"https://www.producthunt.com/posts/openclaw-search-orchestrator"'
+
+
+def test_producthunt_domain_fallback_prefers_exact_target_url():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "OpenClaw Search Orchestrator mirror",
+                "https://www.producthunt.com/posts/openclaw-search-orchestrator/",
+                "Unified search automation for OpenClaw",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "OpenClaw Search Orchestrator collection",
+                "https://www.producthunt.com/collections/openclaw-search-orchestrator",
+                "Collection page",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback(
+            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "OpenClaw 搜索自动化",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator/"
 
 
 

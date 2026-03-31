@@ -748,6 +748,16 @@ def test_jd_item_meta_extractor():
     assert "jd_item_meta" in result["applied_rules"]
 
 
+def test_search_page_extractor_skips_jd_item_pages():
+    raw = """
+    <html><head>
+      <title>【迪士尼DISNEY】迪士尼（DISNEY）长方型女式手表90181-3【行情 报价 价格 评测】-京东</title>
+    </head><body>京东首页 你好，请登录 免费注册 我的订单 我的京东</body></html>
+    """
+    result = module.extract_search_page_special("https://item.jd.com/123456.html", raw, "OpenClaw 实战指南")
+    assert result is None
+
+
 def test_gitlab_meta_extractor():
     raw = """
     <html><head>
@@ -1520,6 +1530,8 @@ if __name__ == "__main__":
     test_known_error_shell_triggers_fallback_for_pinduoduo_shell()
     test_external_discovery_adds_extra_suffixes_for_xiaohongshu()
     test_external_discovery_prefers_actionable_domains()
+    test_jd_item_meta_extractor()
+    test_search_page_extractor_skips_jd_item_pages()
     test_gitlab_meta_extractor()
     test_producthunt_meta_extractor()
     test_taobao_search_cards_extractor()

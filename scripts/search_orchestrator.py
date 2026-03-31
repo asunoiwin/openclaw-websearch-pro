@@ -1969,6 +1969,8 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower()
     path = parsed.path.lower()
+    if "item.jd.com" in domain and path.endswith(".html"):
+        return None
     query_params = urllib.parse.parse_qs(parsed.query)
     looks_like_search = any(hint in clean(raw[:4000]).lower() for hint in SEARCH_PAGE_HINTS)
     has_search_param = any(key in query_params for key in ("q", "query", "search", "keyword", "wd"))
@@ -2733,12 +2735,12 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     )
     if site_special:
         return site_special
-    search_special = extract_search_page_special(url, raw, query)
-    if search_special:
-        return search_special
     jd_special = extract_jd_item_special(url, raw, query)
     if jd_special:
         return jd_special
+    search_special = extract_search_page_special(url, raw, query)
+    if search_special:
+        return search_special
     if looks_like_known_error_shell("", raw, url):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:

@@ -785,6 +785,51 @@ def test_search_page_extractor_skips_jd_item_pages():
     assert result is None
 
 
+def test_known_error_shell_detects_jd_search_verify_page():
+    raw = """
+    <html><head><title>京东验证</title></head>
+    <body>请完成验证后继续访问 京东验证中心 安全验证</body></html>
+    """
+    assert module.looks_like_known_error_shell(
+        "京东验证",
+        raw,
+        "https://search.jd.com/Search?keyword=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+    )
+
+
+def test_jd_search_cards_extractor():
+    raw = """
+    <html><head><title>蓝牙耳机 - 京东搜索</title></head>
+    <body>
+      蓝牙耳机 京东价￥199 自营 2万+条评价
+      主动降噪蓝牙耳机 到手价￥299 官方补贴 1万+条评价
+      运动蓝牙耳机 京东价￥159 好评如潮 自营
+    </body></html>
+    """
+    result = module.extract_jd_search_special(
+        "https://search.jd.com/Search?keyword=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["fetch_mode"] == "jd_search_cards"
+    assert "jd_search_cards" in result["applied_rules"]
+    assert len(result["summary"]) >= 2
+
+
+def test_jd_search_cards_extractor_skips_verify_page():
+    raw = """
+    <html><head><title>京东验证</title></head>
+    <body>请完成验证后继续访问 京东验证中心 安全验证</body></html>
+    """
+    result = module.extract_jd_search_special(
+        "https://search.jd.com/Search?keyword=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is None
+
+
 def test_gitlab_meta_extractor():
     raw = """
     <html><head>
@@ -1418,8 +1463,7 @@ def test_commerce_deep_fallback_rejects_non_product_tutorial_content():
         module.search_engine = original
         module.deep_extract = original_deep
 
-    assert result is not None
-    assert result["fetch_mode"] == "domain_search_fallback"
+    assert result is None
 
 
 def test_actionable_non_product_query_prefers_external_on_commerce_sites():
@@ -1502,6 +1546,43 @@ def test_commerce_domain_fallback_skips_generic_homepage_like_results():
     assert result["links"][0]["href"].startswith("https://mobile.yangkeduo.com/goods.html")
 
 
+def test_commerce_domain_fallback_prefers_item_like_urls_over_guides():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "蓝牙耳机导购",
+                "https://s.taobao.com/guide/bluetooth",
+                "蓝牙耳机 选购指南 推荐攻略",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "蓝牙耳机 官方旗舰店",
+                "https://www.taobao.com/list/item/123456.htm",
+                "蓝牙耳机 官方旗舰店 ¥199 2.3万人付款 包邮",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback(
+            "https://s.taobao.com/search?q=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+            "蓝牙耳机",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["links"][0]["href"] == "https://www.taobao.com/list/item/123456.htm"
+
+
 def test_commerce_domain_fallback_uses_product_suffixes():
     original = module.search_engine
     seen_queries = []
@@ -1564,6 +1645,9 @@ def test_commerce_domain_fallback_returns_none_for_generic_channel_pages():
 def test_generic_commerce_channel_urls_are_filtered():
     assert module.is_generic_commerce_channel_url("https://www.yangkeduo.com/home/sale/") is True
     assert module.is_generic_commerce_channel_url("https://www.taobao.com/list/product/%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA.htm") is True
+    assert module.is_generic_commerce_channel_url("https://shuma.taobao.com/topic/lanyaerji_5/demo.html") is True
+    assert module.is_generic_commerce_channel_url("https://bk.taobao.com/k/lanyaerji_6081") is True
+    assert module.is_generic_commerce_channel_url("https://goods.taobao.com/t/lanyaerji_1602/") is True
     assert module.is_generic_commerce_channel_url("https://mobile.yangkeduo.com/goods.html?goods_id=123") is False
 
 
@@ -1623,6 +1707,43 @@ def test_commerce_external_discovery_filters_generic_bluetooth_articles():
 
     assert result is not None
     assert result["links"][0]["href"].startswith("https://www.douyin.com/search/")
+
+
+def test_commerce_external_discovery_penalizes_social_search_pages_for_taobao():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "淘宝蓝牙耳机推荐50以内 - 抖音",
+                "https://www.douyin.com/search/%E6%B7%98%E5%AE%9D%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+                "抖音综合搜索结果",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "淘宝蓝牙耳机-淘宝蓝牙耳机促销价格、淘宝蓝牙耳机品牌 - 淘宝",
+                "https://www.taobao.com/chanpin/61298b5454b89fcc6f19c622f166f1d39ff20daed2329064a4df04bb563e31dc.html",
+                "¥10.01 3万+人付款",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://s.taobao.com/search?q=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+            "蓝牙耳机",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["links"][0]["href"].startswith("https://www.taobao.com/")
+    assert all("douyin.com/search" not in link["href"] for link in result["links"])
 
 
 def test_producthunt_domain_fallback_uses_producthunt_suffixes():

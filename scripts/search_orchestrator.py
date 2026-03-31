@@ -594,6 +594,20 @@ def commerce_result_bonus(title: str, snippet: str, query: str) -> float:
     return bonus
 
 
+def commerce_external_penalty(url: str) -> float:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    path = parsed.path.lower()
+    penalty = 0.0
+    if looks_like_search_or_shell_url(url):
+        penalty += 0.45
+    if any(domain.endswith(site) for site in ("douyin.com", "xiaohongshu.com", "weibo.com")) and "/search" in path:
+        penalty += 0.35
+    if any(token in path for token in ("/guide/", "/topic/", "/k/")):
+        penalty += 0.18
+    return penalty
+
+
 def has_commerce_content_signal(lines: List[str]) -> bool:
     sample = " ".join(clean(line) for line in lines if line)
     return len(extract_commerce_signals(sample)) >= 1
@@ -705,6 +719,12 @@ def url_path_depth(url: str) -> int:
     return len([segment for segment in parsed.path.split("/") if segment])
 
 
+def commerce_url_rank(url: str) -> Tuple[int, int]:
+    item_like = 0 if is_commerce_item_url(url) else 1
+    generic_channel = 1 if is_generic_commerce_channel_url(url) else 0
+    return (item_like, generic_channel)
+
+
 def is_homepage_like(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     path = parsed.path.strip("/")
@@ -715,12 +735,20 @@ def is_homepage_like(url: str) -> bool:
 
 def is_generic_commerce_channel_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
-    root = root_domain(parsed.netloc.lower())
+    domain = parsed.netloc.lower()
+    root = root_domain(domain)
     path = parsed.path.lower().strip("/")
     if root in {"yangkeduo.com", "pinduoduo.com"}:
         return path.startswith("home/") or path in {"", "index.html"}
     if root in {"taobao.com", "tmall.com"}:
-        return "/list/category/" in parsed.path.lower() or "/list/product/" in parsed.path.lower()
+        if "/list/category/" in parsed.path.lower() or "/list/product/" in parsed.path.lower():
+            return True
+        if any(token in path for token in ("topic/", "/topic/", "guide/", "/guide/", "k/")):
+            return True
+        if domain.startswith("bk.taobao.com") or domain.startswith("shuma.taobao.com"):
+            return True
+        if domain.startswith("goods.taobao.com") and path.startswith("t/"):
+            return True
     return False
 
 
@@ -811,6 +839,8 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
     lowered_title = clean(title).lower()
     lowered_raw = clean(raw[:3000]).lower()
     domain = root_domain(urllib.parse.urlparse(url).netloc.lower())
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.lower()
     if domain == "xiaohongshu.com" and (
         "你访问的页面不见了" in title
         or "你访问的页面不见了" in raw[:3000]
@@ -827,10 +857,16 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
             return True
     if domain == "yangkeduo.com":
         if "风靡全国的拼团商城" in raw[:6000] or "优质商品新鲜直供" in raw[:6000]:
-            path = urllib.parse.urlparse(url).path.lower()
             if any(token in path for token in ("/search_result", "/goods", "/goods.html")):
                 return True
-        if lowered_title == "拼多多" and any(token in urllib.parse.urlparse(url).path.lower() for token in ("/search_result", "/goods", "/goods.html")):
+        if lowered_title == "拼多多" and any(token in path for token in ("/search_result", "/goods", "/goods.html")):
+            return True
+    if domain == "jd.com":
+        combined = f"{lowered_title} {lowered_raw}"
+        if "search.jd.com" in parsed.netloc.lower() or "/search" in path.lower():
+            if any(token in combined for token in ("京东验证", "请完成验证", "安全验证", "验证中心", "verify")):
+                return True
+        if "item.jd.com" in parsed.netloc.lower() and any(token in combined for token in ("京东验证", "请完成验证", "安全验证")):
             return True
     return False
 
@@ -1950,6 +1986,29 @@ def extract_jd_item_special(url: str, raw: str, query: str) -> Dict | None:
     }
 
 
+def extract_jd_search_special(url: str, raw: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    if "search.jd.com" not in domain:
+        return None
+    title = extract_title_value(raw)
+    if any(token in clean(f"{title} {raw[:3000]}").lower() for token in ("京东验证", "请完成验证", "安全验证", "验证中心", "verify")):
+        return None
+    cards = extract_commerce_search_cards_from_raw(raw, query, ("京东价", "评价", "自营", "到手价", "券", "好评"))
+    if not cards:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "jd_search_cards",
+        "title": title or "JD Search",
+        "summary": cards[:5],
+        "sections": [{"level": "results", "text": line[:120]} for line in cards[:5]],
+        "links": [],
+        "quality": "high" if len(cards) >= 3 else "medium",
+        "applied_rules": ["jd_search_cards"],
+    }
+
+
 def extract_meta_value(raw: str, keys: Tuple[str, ...]) -> str:
     for key in keys:
         pattern = re.compile(
@@ -2425,7 +2484,10 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
             break
     if len(useful) < 1:
         return None
-    useful.sort(key=lambda item: (is_homepage_like(item.url), -url_path_depth(item.url), -item.score))
+    if commerce_root in COMMERCE_ROOTS:
+        useful.sort(key=lambda item: (commerce_url_rank(item.url), is_homepage_like(item.url), -url_path_depth(item.url), -item.score))
+    else:
+        useful.sort(key=lambda item: (is_homepage_like(item.url), -url_path_depth(item.url), -item.score))
     if commerce_root in COMMERCE_ROOTS:
         meaningful = 0
         for item in useful:
@@ -2546,6 +2608,7 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                     item.score += commerce_result_bonus(item.title, item.snippet, query)
                     if has_brand_context(f"{item.title} {item.snippet} {item.url}", brand):
                         item.score += 0.22
+                    item.score -= commerce_external_penalty(item.url)
                 collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)
     deep_hits = []
@@ -2594,9 +2657,12 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
     for item in collected:
         if root in COMMERCE_ROOTS:
             combined = f"{item.title} {item.snippet} {item.url}"
+            item_root = root_domain(urllib.parse.urlparse(item.url).netloc.lower())
             if not has_brand_context(combined, brand) and not has_commerce_content_signal([combined]):
                 continue
             if query_overlap_score(combined, query) < 1 and not has_commerce_content_signal([combined]):
+                continue
+            if item_root != root and looks_like_search_or_shell_url(item.url) and not has_commerce_content_signal([combined]):
                 continue
         useful.append(item)
         if len(useful) >= 5:
@@ -2964,6 +3030,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
     site_special = (
         extract_taobao_special(url, raw, query)
         or extract_pinduoduo_special(url, raw, query)
+        or extract_jd_search_special(url, raw, query)
         or extract_gitlab_special(url, raw, query)
         or extract_producthunt_special(url, raw, query)
     )

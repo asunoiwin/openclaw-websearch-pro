@@ -531,6 +531,24 @@ def is_actionable_non_product_query(query: str) -> bool:
     return any(token in sample for token in tokens)
 
 
+def target_slug_terms(url: str) -> List[str]:
+    parsed = urllib.parse.urlparse(url)
+    path = parsed.path.strip("/")
+    if not path:
+        return []
+    tail = path.split("/")[-1]
+    tail = clean(tail.replace("-", " "))
+    terms = [term for term in re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", tail.lower()) if len(term) >= 2]
+    deduped = []
+    seen = set()
+    for term in terms:
+        if term in seen:
+            continue
+        seen.add(term)
+        deduped.append(term)
+    return deduped[:6]
+
+
 def fallback_order_for_url(url: str) -> Tuple[str, ...]:
     domain = urllib.parse.urlparse(url).netloc.lower()
     root = root_domain(domain)
@@ -2179,12 +2197,16 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
     variants = [variant]
     focus = next((key for key in SITE_QUERY_SUFFIXES if key in domain or key in root), None)
     commerce_root = root or domain
+    slug_terms = target_slug_terms(url) if root == "producthunt.com" else []
     if commerce_root in COMMERCE_ROOTS and not is_actionable_non_product_query(query):
         for suffix in ("商品", "价格", "销量", "购买"):
             variants.append(f"{query} {suffix} site:{root or domain}")
     elif focus:
         for suffix in SITE_QUERY_SUFFIXES.get(focus, []):
             variants.append(f"{query} {suffix} site:{root or domain}")
+    if slug_terms:
+        variants.append(f"{' '.join(slug_terms)} site:{root or domain}")
+        variants.append(f"{query} {' '.join(slug_terms)} site:{root or domain}")
     collected: List[SearchResult] = []
     seen = set()
     for engine in ("bing", "ddg"):
@@ -2195,6 +2217,8 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                     continue
                 seen.add(key)
                 item.score = score_result(item, query)
+                if slug_terms and query_overlap_score(f"{item.title} {item.snippet} {item.url}", " ".join(slug_terms)) >= min(2, len(slug_terms)):
+                    item.score += 18
                 if (root or domain) in COMMERCE_ROOTS:
                     item.score += commerce_result_bonus(item.title, item.snippet, query)
                 collected.append(item)
@@ -2300,6 +2324,7 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
     if not brand:
         return None
     focus = next((key for key in SITE_QUERY_SUFFIXES if key in domain or key in root), None)
+    slug_terms = target_slug_terms(url) if root == "producthunt.com" else []
     queries = [f"{query} {brand}"]
     if root in COMMERCE_ROOTS and not is_actionable_non_product_query(query):
         queries.extend(
@@ -2308,6 +2333,8 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
         )
     elif focus:
         queries.extend(f"{query} {brand} {suffix}" for suffix in SITE_QUERY_SUFFIXES.get(focus, []))
+    if slug_terms:
+        queries.append(f"{query} {brand} {' '.join(slug_terms)}")
     for suffix in EXTERNAL_DISCOVERY_EXTRA_SUFFIXES.get(root, []):
         queries.append(f"{query} {brand} {suffix}")
     collected: List[SearchResult] = []
@@ -2320,6 +2347,8 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                     continue
                 seen.add(key)
                 item.score = score_result(item, query)
+                if slug_terms and query_overlap_score(f"{item.title} {item.snippet} {item.url}", " ".join(slug_terms)) >= min(2, len(slug_terms)):
+                    item.score += 18
                 if root in COMMERCE_ROOTS:
                     item.score += commerce_result_bonus(item.title, item.snippet, query)
                 collected.append(item)

@@ -1506,6 +1506,85 @@ def test_producthunt_domain_fallback_uses_producthunt_suffixes():
     assert "OpenClaw 搜索自动化 posts site:producthunt.com" in joined
 
 
+def test_producthunt_domain_fallback_prefers_slug_match():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "OpenClaw: The AI that actually does things | Product Hunt",
+                "https://www.producthunt.com/products/clawdbot-2",
+                "Formerly Moltbot and Clawbot",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "OpenClaw Search Orchestrator - Product Hunt",
+                "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+                "Unified search automation for OpenClaw",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_domain_search_fallback(
+            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "OpenClaw 搜索自动化",
+            follow_depth=False,
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator"
+
+
+def test_producthunt_external_discovery_prefers_slug_match():
+    original = module.search_engine
+    original_deep = module.deep_extract
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "OpenClaw Hunt - GitHub",
+                "https://github.com/demo/openclaw-hunt",
+                "Generic Product Hunt style project",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "OpenClaw Search Orchestrator - Product Hunt",
+                "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+                "Unified search automation for OpenClaw",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    def fake_deep(url, query, allow_fallback=False):
+        return {"url": url, "summary": [], "quality": "low"}
+
+    module.search_engine = fake_search_engine
+    module.deep_extract = fake_deep
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "OpenClaw 搜索自动化",
+        )
+    finally:
+        module.search_engine = original
+        module.deep_extract = original_deep
+
+    assert result is not None
+    assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator"
+
+
 
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
@@ -1561,4 +1640,6 @@ if __name__ == "__main__":
     test_commerce_domain_fallback_returns_none_for_generic_channel_pages()
     test_commerce_external_discovery_uses_product_suffixes()
     test_producthunt_domain_fallback_uses_producthunt_suffixes()
+    test_producthunt_domain_fallback_prefers_slug_match()
+    test_producthunt_external_discovery_prefers_slug_match()
     print("search orchestrator regression tests passed")

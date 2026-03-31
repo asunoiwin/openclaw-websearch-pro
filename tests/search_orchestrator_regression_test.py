@@ -786,6 +786,8 @@ def test_jd_item_meta_extractor():
     assert result is not None
     assert result["fetch_mode"] == "jd_item_meta"
     assert "jd_item_meta" in result["applied_rules"]
+    levels = [section["level"] for section in result["sections"]]
+    assert "title" in levels or "meta" in levels
 
 
 def test_search_page_extractor_skips_jd_item_pages():
@@ -943,6 +945,9 @@ def test_taobao_item_meta_includes_price_review_and_spec_signals():
     assert "￥299" in joined
     assert "评价" in joined
     assert "颜色分类" in joined or "套餐类型" in joined
+    levels = [section["level"] for section in result["sections"]]
+    assert "price" in levels
+    assert "shop" in levels
 
 
 def test_taobao_chanpin_meta_includes_price_review_and_spec_signals():
@@ -968,6 +973,9 @@ def test_taobao_chanpin_meta_includes_price_review_and_spec_signals():
     joined = " | ".join(result["summary"])
     assert "￥159" in joined
     assert "官方旗舰店" in joined
+    levels = [section["level"] for section in result["sections"]]
+    assert "price" in levels
+    assert "sales" in levels
 
 
 def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
@@ -993,6 +1001,9 @@ def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
     assert "￥129" in joined
     assert "已售" in joined
     assert "规格" in joined or "官方补贴" in joined
+    levels = [section["level"] for section in result["sections"]]
+    assert "price" in levels
+    assert "sales" in levels
 
 
 def test_commerce_detail_summary_reads_json_ld_fields():
@@ -1015,6 +1026,28 @@ def test_commerce_detail_summary_reads_json_ld_fields():
     assert "SKU-1234" in joined
     assert "299.00" in joined or "¥ 299.00" in joined or "¥299.00" in joined
     assert "1288条评价" in joined
+
+
+def test_commerce_detail_sections_classify_key_fields():
+    sections = module.extract_commerce_detail_sections(
+        [
+            "OpenClaw 蓝牙耳机",
+            "SKU SKU-1234",
+            "¥299.00",
+            "1288条评价",
+            "4.9分",
+            "1.1万人付款",
+            "官方旗舰店",
+            "颜色分类: 曜石黑",
+        ]
+    )
+    levels = [section["level"] for section in sections]
+    assert "sku" in levels
+    assert "price" in levels
+    assert "rating" in levels
+    assert "sales" in levels
+    assert "shop" in levels
+    assert "spec" in levels
 
 
 def test_browser_session_fallback_rejects_wrong_page():

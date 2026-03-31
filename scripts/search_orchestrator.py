@@ -684,6 +684,32 @@ def extract_commerce_detail_summary(title: str, desc: str, raw: str) -> List[str
     return candidates[:6]
 
 
+def extract_commerce_detail_sections(summary: List[str]) -> List[Dict[str, str]]:
+    sections: List[Dict[str, str]] = []
+    for line in summary:
+        item = clean(line)
+        if not item:
+            continue
+        level = "meta"
+        lowered = item.lower()
+        if item.startswith("SKU "):
+            level = "sku"
+        elif re.search(r"(?:¥|￥)\s?\d+(?:\.\d+)?", item):
+            level = "price"
+        elif "评价" in item or item.endswith("分"):
+            level = "rating"
+        elif "付款" in item or "已售" in item:
+            level = "sales"
+        elif any(token in item for token in ("旗舰店", "专营店", "自营", "官方补贴")):
+            level = "shop"
+        elif any(token in item for token in ("颜色分类", "规格", "型号", "套餐类型", "版本", "尺码")):
+            level = "spec"
+        elif "淘宝" in item or "京东" in item or "拼多多" in item:
+            level = "title"
+        sections.append({"level": level, "text": item[:220]})
+    return sections[:8]
+
+
 def is_actionable_non_product_query(query: str) -> bool:
     sample = clean(query).lower()
     tokens = [
@@ -2060,12 +2086,13 @@ def extract_jd_item_special(url: str, raw: str, query: str) -> Dict | None:
         summary.append(desc[:220])
     if not summary:
         return None
+    sections = extract_commerce_detail_sections(summary)
     return {
         "url": url,
         "fetch_mode": "jd_item_meta",
         "title": title or "JD Item",
         "summary": summary[:5],
-        "sections": [],
+        "sections": sections,
         "links": [],
         "quality": "high" if len(summary) >= 2 else "medium",
         "applied_rules": ["jd_item_meta"],
@@ -2164,12 +2191,13 @@ def extract_taobao_special(url: str, raw: str, query: str) -> Dict | None:
         summary = extract_commerce_detail_summary(title, desc, raw)
         if not summary:
             return None
+        sections = extract_commerce_detail_sections(summary)
         return {
             "url": url,
             "fetch_mode": "taobao_item_meta",
             "title": title or "Taobao Item",
             "summary": summary[:5],
-            "sections": [],
+            "sections": sections,
             "links": [],
             "quality": "high" if len(summary) >= 2 else "medium",
             "applied_rules": ["taobao_item_meta"],
@@ -2207,12 +2235,13 @@ def extract_pinduoduo_special(url: str, raw: str, query: str) -> Dict | None:
         summary = extract_commerce_detail_summary(title, desc, raw)
         if not summary:
             return None
+        sections = extract_commerce_detail_sections(summary)
         return {
             "url": url,
             "fetch_mode": "pinduoduo_item_meta",
             "title": title or "Pinduoduo Item",
             "summary": summary[:5],
-            "sections": [],
+            "sections": sections,
             "links": [],
             "quality": "high" if len(summary) >= 2 else "medium",
             "applied_rules": ["pinduoduo_item_meta"],

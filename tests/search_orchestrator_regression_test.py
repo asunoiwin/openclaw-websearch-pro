@@ -785,7 +785,7 @@ def test_producthunt_meta_extractor():
     </head></html>
     """
     result = module.extract_producthunt_special(
-        "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+        "https://www.producthunt.com/products/clawdbot-2",
         raw,
         "openclaw search automation",
     )
@@ -1494,7 +1494,7 @@ def test_producthunt_domain_fallback_uses_producthunt_suffixes():
     module.search_engine = fake_search_engine
     try:
         module.extract_domain_search_fallback(
-            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "https://www.producthunt.com/products/clawdbot-2",
             "OpenClaw 搜索自动化",
             follow_depth=False,
         )
@@ -1520,8 +1520,8 @@ def test_producthunt_domain_fallback_prefers_slug_match():
                 site_focus,
             ),
             module.SearchResult(
-                "OpenClaw Search Orchestrator - Product Hunt",
-                "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+                "Clawdbot 2 - Product Hunt",
+                "https://www.producthunt.com/products/clawdbot-2",
                 "Unified search automation for OpenClaw",
                 engine,
                 variant,
@@ -1532,7 +1532,7 @@ def test_producthunt_domain_fallback_prefers_slug_match():
     module.search_engine = fake_search_engine
     try:
         result = module.extract_domain_search_fallback(
-            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "https://www.producthunt.com/products/clawdbot-2",
             "OpenClaw 搜索自动化",
             follow_depth=False,
         )
@@ -1540,7 +1540,7 @@ def test_producthunt_domain_fallback_prefers_slug_match():
         module.search_engine = original
 
     assert result is not None
-    assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator"
+    assert result["links"][0]["href"] == "https://www.producthunt.com/products/clawdbot-2"
 
 
 def test_producthunt_domain_fallback_uses_exact_slug_variant():
@@ -1554,7 +1554,7 @@ def test_producthunt_domain_fallback_uses_exact_slug_variant():
     module.search_engine = fake_search_engine
     try:
         module.extract_domain_search_fallback(
-            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "https://www.producthunt.com/products/clawdbot-2",
             "OpenClaw 搜索自动化",
             follow_depth=False,
         )
@@ -1562,10 +1562,10 @@ def test_producthunt_domain_fallback_uses_exact_slug_variant():
         module.search_engine = original
 
     joined = " | ".join(seen_queries)
-    assert '"openclaw-search-orchestrator" site:producthunt.com' in joined
-    assert '"https://www.producthunt.com/posts/openclaw-search-orchestrator"' in joined
+    assert '"clawdbot-2" site:producthunt.com' in joined
+    assert '"https://www.producthunt.com/products/clawdbot-2"' in joined
     assert seen_queries[0] == 'OpenClaw 搜索自动化 site:producthunt.com'
-    assert seen_queries[1] == '"https://www.producthunt.com/posts/openclaw-search-orchestrator"'
+    assert seen_queries[1] == '"https://www.producthunt.com/products/clawdbot-2"'
 
 
 def test_producthunt_external_discovery_prefers_slug_match():
@@ -1583,8 +1583,8 @@ def test_producthunt_external_discovery_prefers_slug_match():
                 site_focus,
             ),
             module.SearchResult(
-                "OpenClaw Search Orchestrator - Product Hunt",
-                "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+                "Clawdbot 2 - Product Hunt",
+                "https://www.producthunt.com/products/clawdbot-2",
                 "Unified search automation for OpenClaw",
                 engine,
                 variant,
@@ -1599,7 +1599,7 @@ def test_producthunt_external_discovery_prefers_slug_match():
     module.deep_extract = fake_deep
     try:
         result = module.extract_external_discovery_fallback(
-            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "https://www.producthunt.com/products/clawdbot-2",
             "OpenClaw 搜索自动化",
         )
     finally:
@@ -1607,7 +1607,7 @@ def test_producthunt_external_discovery_prefers_slug_match():
         module.deep_extract = original_deep
 
     assert result is not None
-    assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator"
+    assert result["links"][0]["href"] == "https://www.producthunt.com/products/clawdbot-2"
 
 
 def test_producthunt_external_discovery_uses_exact_slug_variant():
@@ -1621,17 +1621,17 @@ def test_producthunt_external_discovery_uses_exact_slug_variant():
     module.search_engine = fake_search_engine
     try:
         module.extract_external_discovery_fallback(
-            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "https://www.producthunt.com/products/clawdbot-2",
             "OpenClaw 搜索自动化",
         )
     finally:
         module.search_engine = original
 
     joined = " | ".join(seen_queries)
-    assert 'OpenClaw 搜索自动化 product hunt "openclaw-search-orchestrator"' in joined
-    assert '"https://www.producthunt.com/posts/openclaw-search-orchestrator"' in joined
+    assert 'OpenClaw 搜索自动化 product hunt "clawdbot-2"' in joined
+    assert '"https://www.producthunt.com/products/clawdbot-2"' in joined
     assert seen_queries[0] == "OpenClaw 搜索自动化 product hunt"
-    assert seen_queries[1] == '"https://www.producthunt.com/posts/openclaw-search-orchestrator"'
+    assert seen_queries[1] == '"https://www.producthunt.com/products/clawdbot-2"'
 
 
 def test_producthunt_domain_fallback_prefers_exact_target_url():
@@ -1641,7 +1641,7 @@ def test_producthunt_domain_fallback_prefers_exact_target_url():
         return [
             module.SearchResult(
                 "OpenClaw Search Orchestrator mirror",
-                "https://www.producthunt.com/posts/openclaw-search-orchestrator/",
+                "https://www.producthunt.com/products/clawdbot-2/",
                 "Unified search automation for OpenClaw",
                 engine,
                 variant,
@@ -1649,7 +1649,7 @@ def test_producthunt_domain_fallback_prefers_exact_target_url():
             ),
             module.SearchResult(
                 "OpenClaw Search Orchestrator collection",
-                "https://www.producthunt.com/collections/openclaw-search-orchestrator",
+                "https://www.producthunt.com/products/clawdbot-2/collections",
                 "Collection page",
                 engine,
                 variant,
@@ -1660,7 +1660,7 @@ def test_producthunt_domain_fallback_prefers_exact_target_url():
     module.search_engine = fake_search_engine
     try:
         result = module.extract_domain_search_fallback(
-            "https://www.producthunt.com/posts/openclaw-search-orchestrator",
+            "https://www.producthunt.com/products/clawdbot-2",
             "OpenClaw 搜索自动化",
             follow_depth=False,
         )
@@ -1668,7 +1668,7 @@ def test_producthunt_domain_fallback_prefers_exact_target_url():
         module.search_engine = original
 
     assert result is not None
-    assert result["links"][0]["href"] == "https://www.producthunt.com/posts/openclaw-search-orchestrator/"
+    assert result["links"][0]["href"] == "https://www.producthunt.com/products/clawdbot-2/"
 
 
 

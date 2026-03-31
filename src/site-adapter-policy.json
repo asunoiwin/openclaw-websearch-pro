@@ -15,7 +15,7 @@
     },
     "xiaohongshu.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "优先使用 xiaohongshu-mcp 本地服务获取内容详情；当服务未启动、未登录或缺少 xsec_token 时，回退到外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
+      "reason": "优先使用 xiaohongshu-mcp 本地服务获取内容详情；现在已支持 query 驱动的 search→detail 自动补齐 xsec_token。后续可继续接入 MediaCrawler 作为统一社媒适配层。"
     },
     "douyin.com": {
       "mode": "external_or_custom_adapter",

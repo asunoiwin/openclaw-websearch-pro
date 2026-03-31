@@ -1045,46 +1045,140 @@ def extract_xhs_mcp_special(url: str, query: str) -> Dict | None:
     if root != "xiaohongshu.com":
         return None
     match = re.search(r"/explore/([0-9a-zA-Z]+)", parsed.path)
-    if not match:
-        return None
-    xsec_token = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
-    if not xsec_token:
-        return None
-    if xsec_token.lower() in {"abc123", "test", "demo"} or len(xsec_token) < 8:
-        return None
     if not ensure_xhs_service_started():
         return None
     if xhs_login_status() is False:
         return None
-    try:
-        payload = local_http_post_json(
-            f"{XHS_BASE_URL}/api/v1/feeds/detail",
-            {"feed_id": match.group(1), "xsec_token": xsec_token},
-            timeout=20,
-        )
-    except Exception:
+
+    feed_id = match.group(1) if match else ""
+    xsec_token = urllib.parse.parse_qs(parsed.query).get("xsec_token", [""])[0]
+
+    def valid_xsec_token(value: str) -> bool:
+        value = clean(value)
+        if not value:
+            return False
+        if value.lower() in {"abc123", "test", "demo"}:
+            return False
+        return len(value) >= 8
+
+    def fetch_xhs_detail(target_feed_id: str, target_xsec_token: str) -> Dict | None:
+        if not target_feed_id or not valid_xsec_token(target_xsec_token):
+            return None
+        for _ in range(2):
+            try:
+                payload = local_http_post_json(
+                    f"{XHS_BASE_URL}/api/v1/feeds/detail",
+                    {"feed_id": target_feed_id, "xsec_token": target_xsec_token},
+                    timeout=20,
+                )
+            except Exception:
+                payload = None
+            if isinstance(payload, dict) and payload.get("success") is not False:
+                return payload
+            time.sleep(0.5)
         return None
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(data, dict):
+
+    def search_xhs_feed_candidate(keyword: str, preferred_feed_id: str = "") -> Tuple[str, str]:
+        keyword = clean(keyword)
+        if not keyword:
+            return "", ""
+        try:
+            payload = local_http_post_json(
+                f"{XHS_BASE_URL}/api/v1/feeds/search",
+                {"keyword": keyword},
+                timeout=20,
+            )
+        except Exception:
+            return "", ""
+        feeds = (((payload or {}).get("data") or {}).get("feeds") or []) if isinstance(payload, dict) else []
+        if not isinstance(feeds, list):
+            return "", ""
+        query_tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", keyword.lower())
+        best_score = -1
+        best_pair = ("", "")
+        for item in feeds:
+            if not isinstance(item, dict):
+                continue
+            item_id = clean(item.get("id", ""))
+            item_token = clean(item.get("xsecToken", "") or item.get("xsec_token", ""))
+            note_card = item.get("noteCard") if isinstance(item.get("noteCard"), dict) else {}
+            title = clean(note_card.get("displayTitle", "") or item.get("title", ""))
+            score = 0
+            if preferred_feed_id and item_id == preferred_feed_id:
+                score += 100
+            if valid_xsec_token(item_token):
+                score += 10
+            if title:
+                title_tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", title.lower())
+                score += sum(1 for token in query_tokens if token in title_tokens) * 3
+                if keyword.lower() in title.lower():
+                    score += 10
+            if score > best_score:
+                best_score = score
+                best_pair = (item_id, item_token)
+        return best_pair
+
+    def unpack_xhs_detail_payload(payload: Dict) -> Tuple[Dict, List[Dict]]:
+        if not isinstance(payload, dict):
+            return {}, []
+        outer = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        data = outer.get("data") if isinstance(outer.get("data"), dict) else outer
+        note = data.get("note") if isinstance(data.get("note"), dict) else data
+        comments_obj = data.get("comments") if isinstance(data.get("comments"), dict) else {}
+        comments = comments_obj.get("list") if isinstance(comments_obj.get("list"), list) else []
+        return note if isinstance(note, dict) else {}, comments
+
+    payload = None
+    if feed_id and valid_xsec_token(xsec_token):
+        payload = fetch_xhs_detail(feed_id, xsec_token)
+
+    if payload is None:
+        candidate_feed_id, candidate_xsec_token = search_xhs_feed_candidate(query, preferred_feed_id=feed_id)
+        if candidate_feed_id and candidate_xsec_token:
+            payload = fetch_xhs_detail(candidate_feed_id, candidate_xsec_token)
+
+    note, comments = unpack_xhs_detail_payload(payload or {})
+    if not note:
         return None
-    title = clean(data.get("title", ""))
-    desc = clean(data.get("desc", "") or data.get("content", ""))
-    user = data.get("user") or data.get("user_info") or {}
+
+    title = clean(note.get("title", ""))
+    desc = clean(note.get("desc", "") or note.get("content", ""))
+    user = note.get("user") or note.get("userInfo") or note.get("user_info") or {}
     author = clean(user.get("nickname", "") if isinstance(user, dict) else "")
-    interact = data.get("interact_info") or data.get("interactions") or {}
+    interact = note.get("interactInfo") or note.get("interact_info") or note.get("interactions") or {}
     stats = []
     if isinstance(interact, dict):
-        for field in ("liked_count", "collected_count", "comment_count", "share_count"):
+        for field in (
+            "liked_count",
+            "likedCount",
+            "collected_count",
+            "collectedCount",
+            "comment_count",
+            "commentCount",
+            "share_count",
+            "sharedCount",
+        ):
             value = interact.get(field)
-            if value not in (None, "", 0):
+            if value not in (None, "", 0, "0"):
                 stats.append(f"{field}={value}")
-    text = " ".join(part for part in [title, desc, author, " ".join(stats)] if part)
+    comment_bits = []
+    for item in comments[:3]:
+        if not isinstance(item, dict):
+            continue
+        content = clean(item.get("content", ""))
+        if content:
+            comment_bits.append(content[:120])
+    text = " ".join(part for part in [title, desc, author, " ".join(stats), " ".join(comment_bits)] if part)
     summary = summarize_text(text, query)
     if not summary:
         if title:
             summary.append(title)
         if desc:
             summary.append(desc[:280])
+    for comment in comment_bits:
+        if len(summary) >= 5:
+            break
+        summary.append(comment)
     if not summary:
         return None
     sections = []
@@ -1092,13 +1186,24 @@ def extract_xhs_mcp_special(url: str, query: str) -> Dict | None:
         sections.append({"level": "meta", "text": f"author: {author}"})
     if stats:
         sections.append({"level": "meta", "text": ", ".join(stats)})
+    if comment_bits:
+        sections.append({"level": "comments", "text": " | ".join(comment_bits[:2])})
+    links = []
+    image_list = note.get("imageList")
+    if isinstance(image_list, list):
+        for image in image_list[:4]:
+            if not isinstance(image, dict):
+                continue
+            image_url = clean(image.get("urlDefault", "") or image.get("urlPre", ""))
+            if image_url.startswith("http"):
+                links.append({"label": "image", "url": image_url})
     return {
         "url": url,
         "fetch_mode": "xhs_mcp",
         "title": title or author or "Xiaohongshu Feed",
         "summary": summary[:5],
         "sections": sections[:8],
-        "links": [],
+        "links": links[:10],
         "quality": "high" if len(summary) >= 2 else "medium",
         "applied_rules": ["xhs_mcp_adapter"],
     }

@@ -206,6 +206,7 @@ Current specialized paths include:
 - X / Twitter status URLs
   - can use official `oEmbed` for public text posts without a browser session
 - Xiaohongshu / Douyin
+  - Xiaohongshu now supports `xiaohongshu-mcp` detail extraction directly; if the URL does not include `xsec_token`, the orchestrator can use the query to call `/feeds/search`, recover a real `feed_id + xsecToken`, and then fetch detail automatically
 - Xiaohongshu runtime blockers
   - `xhs_adapter_bootstrap_blocked`: local Go service is still blocked in dependency bootstrap and has not become healthy yet
   - `xhs_adapter_login_required`: local service is up but the account is not logged in

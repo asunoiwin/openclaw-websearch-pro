@@ -211,6 +211,7 @@
 - X / Twitter 状态页
   - 纯文本推文优先走官方 `oEmbed`，不依赖浏览器登录态
 - 小红书 / 抖音
+  - 小红书现在已支持 `xiaohongshu-mcp` 直连详情提取；如果 URL 里没有 `xsec_token`，会先用 query 调 `/feeds/search`，拿到真实 `feed_id + xsecToken` 后再自动做 detail
   - 当站内页是壳层、错页或重 JS 不可读时，外部发现会优先偏向 `GitHub / skill / MCP / 教程 / 自动化` 结果，而不是只返回泛平台介绍
   - `xhs_adapter_bootstrap_blocked` 表示本地小红书 Go 服务还卡在依赖启动阶段，尚未进入可用状态
   - `xhs_adapter_login_required` 表示本地小红书服务已经起来，但账号未登录

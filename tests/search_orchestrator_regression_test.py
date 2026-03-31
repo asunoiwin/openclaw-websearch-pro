@@ -450,6 +450,9 @@ def test_twitter_oembed_adapter_for_text_status():
 def test_known_error_shell_triggers_fallback_for_xiaohongshu():
     original_fetch = module.fetch_with_reader_fallback
     original_run_fallbacks = module.run_fallbacks
+    original_start = module.ensure_xhs_service_started
+    original_login = module.xhs_login_status
+    original_post = module.local_http_post_json
 
     def fake_fetch(url):
         return '<html><head><title>小红书 - 你访问的页面不见了</title></head><body>错误页</body></html>', 'direct'
@@ -468,11 +471,17 @@ def test_known_error_shell_triggers_fallback_for_xiaohongshu():
 
     module.fetch_with_reader_fallback = fake_fetch
     module.run_fallbacks = fake_run_fallbacks
+    module.ensure_xhs_service_started = lambda: True
+    module.xhs_login_status = lambda: True
+    module.local_http_post_json = lambda *args, **kwargs: {"success": True, "data": {"data": {"feeds": []}}}
     try:
         result = module.deep_extract('https://www.xiaohongshu.com/explore/demo', 'OpenClaw 优化')
     finally:
         module.fetch_with_reader_fallback = original_fetch
         module.run_fallbacks = original_run_fallbacks
+        module.ensure_xhs_service_started = original_start
+        module.xhs_login_status = original_login
+        module.local_http_post_json = original_post
 
     assert result['fetch_mode'] == 'external_discovery_fallback'
     assert 'known_error_shell' in result['applied_rules']
@@ -805,13 +814,26 @@ def test_xhs_mcp_adapter():
     original_post = module.local_http_post_json
 
     def fake_post(url, payload, timeout=20):
+        assert url.endswith("/api/v1/feeds/detail")
         return {
             "success": True,
             "data": {
-                "title": "OpenClaw 小红书自动化实测",
-                "desc": "记录 OpenClaw 在小红书内容运营中的自动化实践",
-                "user": {"nickname": "测试博主"},
-                "interact_info": {"liked_count": 321, "comment_count": 18, "share_count": 4},
+                "feed_id": "65f2d9f50000000001027d63",
+                "data": {
+                    "note": {
+                        "title": "OpenClaw 小红书自动化实测",
+                        "desc": "记录 OpenClaw 在小红书内容运营中的自动化实践",
+                        "user": {"nickname": "测试博主"},
+                        "interactInfo": {"likedCount": "321", "commentCount": "18", "sharedCount": "4"},
+                        "imageList": [{"urlDefault": "https://example.com/note-cover.jpg"}],
+                    },
+                    "comments": {
+                        "list": [
+                            {"content": "这个自动化思路很实用"},
+                            {"content": "求教程和配置细节"},
+                        ]
+                    },
+                },
             },
         }
 
@@ -822,6 +844,64 @@ def test_xhs_mcp_adapter():
         result = module.extract_xhs_mcp_special(
             "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=3b4c5d6e7f8g9h0i",
             "OpenClaw 自动化",
+        )
+    finally:
+        module.ensure_xhs_service_started = original_start
+        module.xhs_login_status = original_login
+        module.local_http_post_json = original_post
+
+    assert result is not None
+    assert result["fetch_mode"] == "xhs_mcp"
+    assert "xhs_mcp_adapter" in result["applied_rules"]
+    assert result["links"][0]["url"] == "https://example.com/note-cover.jpg"
+
+
+def test_xhs_mcp_adapter_can_search_for_missing_token():
+    original_start = module.ensure_xhs_service_started
+    original_login = module.xhs_login_status
+    original_post = module.local_http_post_json
+
+    def fake_post(url, payload, timeout=20):
+        if url.endswith("/api/v1/feeds/search"):
+            return {
+                "success": True,
+                "data": {
+                    "feeds": [
+                        {
+                            "id": "65f2d9f50000000001027d63",
+                            "xsecToken": "REAL_XSEC_TOKEN_123456",
+                            "noteCard": {"displayTitle": "OpenClaw 15个玩法，你的小龙虾用的怎么样"},
+                        }
+                    ]
+                },
+            }
+        if url.endswith("/api/v1/feeds/detail"):
+            assert payload["feed_id"] == "65f2d9f50000000001027d63"
+            assert payload["xsec_token"] == "REAL_XSEC_TOKEN_123456"
+            return {
+                "success": True,
+                "data": {
+                    "feed_id": "65f2d9f50000000001027d63",
+                    "data": {
+                        "note": {
+                            "title": "OpenClaw 15个玩法，你的小龙虾用的怎么样",
+                            "desc": "自动补 token 后成功命中详情",
+                            "user": {"nickname": "测试博主"},
+                            "interactInfo": {"likedCount": "88", "commentCount": "12"},
+                        },
+                        "comments": {"list": [{"content": "这个回退链是对的"}]},
+                    },
+                },
+            }
+        raise AssertionError(url)
+
+    module.ensure_xhs_service_started = lambda: True
+    module.xhs_login_status = lambda: True
+    module.local_http_post_json = fake_post
+    try:
+        result = module.extract_xhs_mcp_special(
+            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63",
+            "OpenClaw 15个玩法",
         )
     finally:
         module.ensure_xhs_service_started = original_start
@@ -1084,6 +1164,7 @@ if __name__ == "__main__":
     test_external_discovery_fallback_for_chinese_social_sites()
     test_douyin_project_adapter()
     test_xhs_mcp_adapter()
+    test_xhs_mcp_adapter_can_search_for_missing_token()
     test_adapter_blocker_rules_for_xhs_and_douyin()
     test_adapter_blocker_rules_for_douyin_cookie_file_missing()
     test_adapter_blocker_rules_for_xhs_login_required()

@@ -2828,6 +2828,7 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
         summary = []
         links = []
         sections = []
+        deep_hit_roots = set()
         for item, nested in deep_hits:
             nested_summary = nested.get("summary") or []
             if not nested_summary:
@@ -2835,17 +2836,23 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
             summary.append(nested_summary[0])
             links.append({"text": nested.get("title") or item.title, "href": item.url})
             sections.append({"level": "follow", "text": nested.get("title") or item.title})
+            deep_hit_roots.add(root_domain(urllib.parse.urlparse(item.url).netloc.lower()))
         if summary:
+            same_domain_deep = bool(root and deep_hit_roots and deep_hit_roots == {root})
             return {
                 "url": url,
-                "fetch_mode": "external_discovery_deep_fallback",
+                "fetch_mode": "domain_search_deep_fallback" if same_domain_deep else "external_discovery_deep_fallback",
                 "title": clean(root or domain),
                 "summary": summary[:5],
                 "sections": sections[:10],
                 "links": links[:10],
                 "quality": "high" if len(summary) >= 2 else "medium",
                 "source_query": queries[:4],
-                "applied_rules": ["quality_gating", "external_discovery_fallback", "followup_refinement"],
+                "applied_rules": (
+                    ["quality_gating", "domain_search_fallback", "followup_refinement"]
+                    if same_domain_deep
+                    else ["quality_gating", "external_discovery_fallback", "followup_refinement"]
+                ),
             }
     useful = []
     seen_titles = set()

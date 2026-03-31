@@ -505,6 +505,58 @@ def test_external_discovery_deep_fallback_prefers_nested_content():
     assert "followup_refinement" in result["applied_rules"]
 
 
+def test_external_discovery_deep_fallback_promotes_same_domain_hits():
+    original_search = module.search_engine
+    original_deep = module.deep_extract
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "淘宝蓝牙耳机 旗舰店",
+                "https://www.taobao.com/list/item/123456.htm",
+                "蓝牙耳机 官方旗舰店 ¥199 2.3万人付款 包邮",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "淘宝蓝牙耳机 聚合页",
+                "https://www.taobao.com/chanpin/fb64ddac6d0226c8c05858fa1593e6b3.html",
+                "蓝牙耳机 促销价格 旗舰店",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    def fake_deep_extract(url, query, allow_fallback=True):
+        return {
+            "url": url,
+            "fetch_mode": "taobao_item_meta",
+            "title": "蓝牙耳机 官方旗舰店",
+            "summary": ["¥199 2.3万人付款 官方旗舰店"],
+            "sections": [],
+            "links": [],
+            "quality": "high",
+            "applied_rules": ["taobao_item_meta"],
+        }
+
+    module.search_engine = fake_search_engine
+    module.deep_extract = fake_deep_extract
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://s.taobao.com/search?q=%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+            "蓝牙耳机",
+        )
+    finally:
+        module.search_engine = original_search
+        module.deep_extract = original_deep
+
+    assert result is not None
+    assert result["fetch_mode"] == "domain_search_deep_fallback"
+    assert "domain_search_fallback" in result["applied_rules"]
+
+
 def test_gallery_dl_adapter_for_weibo_status():
     original_run = module.subprocess.run
     original_available = module.gallery_dl_available

@@ -328,10 +328,11 @@ def test_sanitize_douyin_profile_text_drops_missing_video_shell():
 
 
 def test_extract_douyin_profile_stats():
-    stats = module.extract_douyin_profile_stats("已经收获了12个喜欢 3条评论 1次分享 来抖音，记录美好生活！")
+    stats = module.extract_douyin_profile_stats("已经收获了12个喜欢 3条评论 1次分享 9次收藏 来抖音，记录美好生活！")
     assert "12个喜欢" in stats
     assert "3条评论" in stats
     assert "1次分享" in stats
+    assert "9次收藏" in stats
 
 
 def test_build_douyin_profile_result_uses_description_when_body_is_shell():
@@ -340,6 +341,7 @@ def test_build_douyin_profile_result_uses_description_when_body_is_shell():
         "description": "于20260331发布在抖音，已经收获了12个喜欢、3条评论，来抖音，记录美好生活！",
         "text": "你要观看的视频不存在 广告投放 用户服务协议",
         "headings": [],
+        "collect_count": 9,
     }
     result = module.build_douyin_profile_result(
         "https://www.douyin.com/video/7488202296297166114",
@@ -353,6 +355,7 @@ def test_build_douyin_profile_result_uses_description_when_body_is_shell():
     assert result["summary"]
     joined = " | ".join(result["summary"])
     assert "12个喜欢" in joined
+    assert "collect_count=9" in joined
     assert any("12个喜欢" in section.get("text", "") for section in result["sections"])
 
 

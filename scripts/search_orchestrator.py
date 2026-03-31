@@ -1324,10 +1324,12 @@ def extract_douyin_profile_stats(text: str) -> List[str]:
         return []
     patterns = [
         r"\d+(?:\.\d+)?万?个喜欢",
+        r"\d+(?:\.\d+)?万?个赞",
         r"\d+(?:\.\d+)?万?次播放",
         r"\d+(?:\.\d+)?万?条评论",
         r"\d+(?:\.\d+)?万?次分享",
         r"\d+(?:\.\d+)?万?次收藏",
+        r"\d+(?:\.\d+)?万?人看过",
     ]
     results: List[str] = []
     seen = set()
@@ -1349,6 +1351,26 @@ def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | N
     description = clean(payload.get("description", ""))
     body_text = sanitize_douyin_profile_text(payload.get("text", ""))
     stats = extract_douyin_profile_stats(" ".join(part for part in (description, body_text) if part))
+    for field, label in (
+        ("like_count", "like_count"),
+        ("liked_count", "liked_count"),
+        ("comment_count", "comment_count"),
+        ("share_count", "share_count"),
+        ("collect_count", "collect_count"),
+        ("collected_count", "collected_count"),
+        ("play_count", "play_count"),
+    ):
+        value = payload.get(field)
+        if value not in (None, "", 0, "0"):
+            stats.append(f"{label}={value}")
+    deduped_stats = []
+    seen_stats = set()
+    for stat in stats:
+        if stat in seen_stats:
+            continue
+        seen_stats.add(stat)
+        deduped_stats.append(stat)
+    stats = deduped_stats[:6]
     summary = summarize_text(" ".join(part for part in (description, body_text) if part), query)
     if not summary and description:
         summary = [description[:280]]

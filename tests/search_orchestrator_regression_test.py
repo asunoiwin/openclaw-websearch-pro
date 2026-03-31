@@ -322,6 +322,66 @@ def test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json():
         module.subprocess.run = original_run
 
 
+def test_mediacrawler_tieba_adapter_uses_search_output_json():
+    original_available = module.mediacrawler_available
+    original_cookie_file = module.TIEBA_COOKIE_FILE
+    original_python = module.MEDIACRAWLER_VENV_PYTHON
+    original_project = module.MEDIACRAWLER_PROJECT
+    original_output = module.MEDIACRAWLER_OUTPUT_BASE
+    original_run = module.subprocess.run
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            cookie_file = base / "tieba-cookie.txt"
+            cookie_file.write_text("BDUSS=dummy", encoding="utf-8")
+            project = base / "MediaCrawler"
+            project.mkdir()
+            fake_python = base / "python"
+            fake_python.write_text("", encoding="utf-8")
+            fake_python.chmod(0o755)
+            output_base = base / "out"
+
+            class FakeProc:
+                def __init__(self):
+                    self.returncode = 0
+                    self.stdout = ""
+                    self.stderr = ""
+
+            def fake_run(cmd, cwd=None, text=True, capture_output=True, timeout=90):
+                save_path = Path(cmd[cmd.index("--save_data_path") + 1])
+                target = save_path / "tieba" / "json"
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "search_contents_2026-03-31.json").write_text(
+                    '[{"title":"OpenClaw 使用交流贴","desc":"分享 OpenClaw 部署与优化经验","note_url":"https://tieba.baidu.com/p/123456","tieba_name":"openclaw吧"},{"title":"OpenClaw 新手入门","desc":"安装、配置与常见问题","note_url":"https://tieba.baidu.com/p/654321","tieba_name":"openclaw吧"}]',
+                    encoding="utf-8",
+                )
+                return FakeProc()
+
+            module.mediacrawler_available = lambda: True
+            module.TIEBA_COOKIE_FILE = cookie_file
+            module.MEDIACRAWLER_VENV_PYTHON = fake_python
+            module.MEDIACRAWLER_PROJECT = project
+            module.MEDIACRAWLER_OUTPUT_BASE = output_base
+            module.subprocess.run = fake_run
+
+            result = module.extract_mediacrawler_tieba_special(
+                "https://tieba.baidu.com/f/search/res?ie=utf-8&qw=openclaw",
+                "openclaw",
+            )
+
+            assert result is not None
+            assert result["fetch_mode"] == "mediacrawler_tieba"
+            assert "mediacrawler_tieba" in result["applied_rules"]
+            assert len(result["links"]) >= 2
+    finally:
+        module.mediacrawler_available = original_available
+        module.TIEBA_COOKIE_FILE = original_cookie_file
+        module.MEDIACRAWLER_VENV_PYTHON = original_python
+        module.MEDIACRAWLER_PROJECT = original_project
+        module.MEDIACRAWLER_OUTPUT_BASE = original_output
+        module.subprocess.run = original_run
+
+
 def test_external_discovery_deep_fallback_prefers_nested_content():
     original_search = module.search_engine
     original_deep = module.deep_extract
@@ -1149,6 +1209,7 @@ if __name__ == "__main__":
     test_yt_dlp_adapter_for_reddit_content_page()
     test_load_cookie_file_normalizes_prefix()
     test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json()
+    test_mediacrawler_tieba_adapter_uses_search_output_json()
     test_gallery_dl_adapter_for_reddit_submission()
     test_twitter_oembed_adapter_for_text_status()
     test_known_error_shell_triggers_fallback_for_xiaohongshu()

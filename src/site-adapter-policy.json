@@ -29,6 +29,10 @@
       "mode": "gallery_or_external_adapter",
       "reason": "当前优先 gallery-dl；对真实微博状态页，它比 MediaCrawler 集成成本更低。MediaCrawler 更适合未来统一做搜索、评论和创作者主页抓取。"
     },
+    "tieba.baidu.com": {
+      "mode": "mediacrawler_search_adapter",
+      "reason": "贴吧已接入 MediaCrawler 搜索适配器。它在本机能直接跑通 Tieba 搜索流程，但是否有结果取决于关键词本身；因此作为 Tieba 主路径是合理的。"
+    },
     "x.com": {
       "mode": "oembed_or_external_adapter",
       "reason": "纯文本推文适合通过官方 oEmbed 取正文，避免登录墙和 JS 壳页；更复杂内容再回退外部发现。"
@@ -38,8 +42,8 @@
       "reason": "公开搜索页常被 403 或挑战页挡住；讨论帖正文优先走 gallery-dl，外链/媒体帖可走 yt-dlp + 浏览器 cookies。MediaCrawler 不覆盖 Reddit，因此维持现有路径。"
     },
     "zhihu.com": {
-      "mode": "domain_or_mediacrawler_future",
-      "reason": "当前主链仍以域内重搜和结果页提取为主。MediaCrawler 原生支持知乎搜索、详情、评论和创作者主页，后续当需要站内深抓取时应优先考虑接入。"
+      "mode": "domain_deep_fallback_preferred",
+      "reason": "当前主链已不是停在搜索页，而是能继续跟进知乎详情页并返回 domain_search_deep_fallback。实测 MediaCrawler 在本机完成二维码登录后能抓到搜索结果和评论，但登录态无法稳定在无头复跑中复用，因此暂不切为主路径。后续只有在 cookie 复用稳定后才切换。"
     },
     "gitlab.com": {
       "mode": "external_until_authenticated",

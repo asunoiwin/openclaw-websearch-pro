@@ -33,6 +33,7 @@ XHS_LOG_FILE = Path(os.environ.get("OPENCLAW_XHS_LOG_FILE", "/tmp/openclaw_xhs_m
 XHS_BINARY = Path(os.environ.get("OPENCLAW_XHS_BINARY", str(XHS_PROJECT / "xhs_mcp_bin")))
 MEDIACRAWLER_VENV_PYTHON = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_PYTHON", str(MEDIACRAWLER_PROJECT / ".venv" / "bin" / "python")))
 DOUYIN_COOKIE_FILE = Path(os.environ.get("OPENCLAW_DOUYIN_COOKIE_FILE", "/Users/rico/.openclaw/workspace/secrets/douyin-cookie.txt"))
+TIEBA_COOKIE_FILE = Path(os.environ.get("OPENCLAW_TIEBA_COOKIE_FILE", "/Users/rico/.openclaw/workspace/secrets/tieba-cookie.txt"))
 MEDIACRAWLER_OUTPUT_BASE = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_OUTPUT_BASE", "/tmp/openclaw_mediacrawler"))
 MEDIACRAWLER_TIMEOUT_SECONDS = int(os.environ.get("OPENCLAW_MEDIACRAWLER_TIMEOUT_SECONDS", "45"))
 YT_DLP = ["python3", "-m", "yt_dlp"]
@@ -123,6 +124,7 @@ SITE_QUERY_SUFFIXES = {
     "douyin": ["教程", "实测"],
     "zhihu": ["经验", "回答"],
     "weibo": ["讨论", "教程", "经验"],
+    "tieba": ["帖子", "吧", "讨论"],
     "x": ["thread", "post", "discussion"],
     "gitlab": ["repo", "project", "issue"],
     "36kr": ["资讯", "报道", "文章"],
@@ -430,6 +432,8 @@ def root_domain(value: str) -> str:
     host = clean(value).lower()
     if not host:
         return ""
+    if host.endswith("tieba.baidu.com"):
+        return "tieba.baidu.com"
     parts = [part for part in host.split(".") if part]
     if len(parts) <= 2:
         return host
@@ -1039,6 +1043,105 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
         "links": links[:10],
         "quality": "high" if len(summary) >= 2 else "medium",
         "applied_rules": ["mediacrawler_douyin", "cookie_file_login"],
+    }
+
+
+def extract_mediacrawler_tieba_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    path = parsed.path.lower()
+    if root != "tieba.baidu.com":
+        return None
+    if not query:
+        return None
+    if "/f/search" not in path and "/f" not in path:
+        return None
+    if not mediacrawler_available():
+        return None
+
+    cookie_str = load_cookie_file(TIEBA_COOKIE_FILE) or "BDUSS=dummy"
+    stamp = str(int(time.time() * 1000))
+    out_dir = MEDIACRAWLER_OUTPUT_BASE / stamp
+    cmd = [
+        str(MEDIACRAWLER_VENV_PYTHON),
+        "main.py",
+        "--platform",
+        "tieba",
+        "--lt",
+        "cookie",
+        "--cookies",
+        cookie_str,
+        "--type",
+        "search",
+        "--keywords",
+        query,
+        "--headless",
+        "true",
+        "--save_data_option",
+        "json",
+        "--save_data_path",
+        str(out_dir),
+        "--get_comment",
+        "false",
+        "--get_sub_comment",
+        "false",
+        "--max_concurrency_num",
+        "1",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(MEDIACRAWLER_PROJECT),
+            text=True,
+            capture_output=True,
+            timeout=MEDIACRAWLER_TIMEOUT_SECONDS,
+        )
+        if proc.returncode != 0:
+            return None
+        candidates = sorted((out_dir / "tieba" / "json").glob("search_contents_*.json"))
+        if not candidates:
+            return None
+        try:
+            payload = json.loads(candidates[-1].read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    except subprocess.TimeoutExpired:
+        return None
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+
+    if not isinstance(payload, list) or not payload:
+        return None
+    summary = []
+    sections = []
+    links = []
+    for item in payload[:5]:
+        if not isinstance(item, dict):
+            continue
+        title = clean(item.get("title", ""))
+        desc = clean(item.get("desc", "") or item.get("content_text", ""))
+        note_url = clean(item.get("note_url", "") or item.get("content_url", ""))
+        tieba_name = clean(item.get("tieba_name", ""))
+        if not title and not desc:
+            continue
+        line = f"{title}: {desc[:180]}".strip(": ") if desc else title
+        if tieba_name:
+            line = f"{line} | tieba={tieba_name}" if line else f"tieba={tieba_name}"
+        summary.append(line)
+        sections.append({"level": "results", "text": title or desc[:80]})
+        if note_url.startswith("http"):
+            links.append({"text": title or note_url, "href": note_url})
+    if not summary:
+        return None
+    return {
+        "url": url,
+        "fetch_mode": "mediacrawler_tieba",
+        "title": "Tieba Search",
+        "summary": summary[:5],
+        "sections": sections[:10],
+        "links": links[:10],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["mediacrawler_tieba", "cookie_file_login"],
     }
 
 
@@ -2262,6 +2365,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         or extract_twitter_oembed_special(url, query)
         or extract_xhs_mcp_special(url, query)
         or extract_mediacrawler_douyin_special(url, query)
+        or extract_mediacrawler_tieba_special(url, query)
         or extract_douyin_project_special(url, query)
         or extract_gallery_dl_special(url, query)
         or extract_yt_dlp_special(url, query)

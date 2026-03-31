@@ -211,6 +211,9 @@
   - 当命中真实微博状态页时，可通过 `gallery-dl` 提取结构化内容
 - X / Twitter 状态页
   - 纯文本推文优先走官方 `oEmbed`，不依赖浏览器登录态
+- Tieba 搜索页
+  - 现在会优先走 `MediaCrawler` 的 Tieba 搜索适配器
+  - 当 MediaCrawler 没有拿到帖子结果时，再安全回退到通用搜索链
 - 小红书 / 抖音
   - 小红书现在已支持 `xiaohongshu-mcp` 直连详情提取；如果 URL 里没有 `xsec_token`，会先用 query 调 `/feeds/search`，拿到真实 `feed_id + xsecToken` 后再自动做 detail
   - 当站内页是壳层、错页或重 JS 不可读时，外部发现会优先偏向 `GitHub / skill / MCP / 教程 / 自动化` 结果，而不是只返回泛平台介绍
@@ -378,7 +381,12 @@ python3 scripts/browser_session_bridge.py close-front safari
 - Bilibili：
   - 继续以 `yt-dlp` 为主
 - 知乎：
-  - 未来需要站内深抓取时，优先考虑 `MediaCrawler`
+  - 当前继续以 `domain_search_deep_fallback` 为主
+  - 原因是当前主路径已经会从搜索结果继续跟进到真实详情页
+  - `MediaCrawler` 在本机上已经验证能通过二维码登录抓到搜索结果和评论，但登录态还不能稳定复用到无人值守的 headless 流程
+- 贴吧：
+  - 当前以 `MediaCrawler` 搜索适配器为主
+  - 原因是它已经能作为站内搜索主路径运行，并在没有帖子结果时安全回退
 
 ## 站点语义外部发现兜底
 

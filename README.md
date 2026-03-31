@@ -206,6 +206,9 @@ Current specialized paths include:
   - can use `gallery-dl` to extract structured post metadata from real status pages
 - X / Twitter status URLs
   - can use official `oEmbed` for public text posts without a browser session
+- Tieba search pages
+  - now prefer a `MediaCrawler` Tieba search adapter first
+  - when MediaCrawler returns no post results, the orchestrator falls back safely to the generic search chain
 - Xiaohongshu / Douyin
   - Xiaohongshu now supports `xiaohongshu-mcp` detail extraction directly; if the URL does not include `xsec_token`, the orchestrator can use the query to call `/feeds/search`, recover a real `feed_id + xsecToken`, and then fetch detail automatically
 - Xiaohongshu runtime blockers
@@ -242,7 +245,12 @@ When a target page is blocked or degraded, the orchestrator can synthesize a usa
   - Keep `yt-dlp` as primary.
   - Reason: video detail extraction is already stable and lighter than migrating to `MediaCrawler`.
 - Zhihu
-  - Keep current domain-search path for now, but use `MediaCrawler` first if future work requires in-site detail/comments/creator crawling.
+  - Keep `domain_search_deep_fallback` as primary for now.
+  - Reason: the current main path already follows search results into real detail pages.
+  - `MediaCrawler` has been verified to fetch search results and comments after QR login on this machine, but the login state cannot yet be reused headlessly in a stable unattended flow.
+- Tieba
+  - Use `MediaCrawler` search as primary.
+  - Reason: it already fits Tieba's search-oriented workflow, and the orchestrator can fall back cleanly when no posts are returned.
 - Reddit / X / GitHub / ecommerce sites
   - Do not force `MediaCrawler`.
   - Reason: it does not cover those sites, and the current adapters are a better fit.

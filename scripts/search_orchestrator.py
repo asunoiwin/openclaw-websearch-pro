@@ -599,6 +599,12 @@ def has_commerce_content_signal(lines: List[str]) -> bool:
     return len(extract_commerce_signals(sample)) >= 1
 
 
+def has_brand_context(text: str, brand: str) -> bool:
+    sample = clean(text).lower()
+    brand_tokens = re.findall(r"[a-z0-9]+|[\u4e00-\u9fff]{2,}", brand.lower())
+    return any(token and token in sample for token in brand_tokens)
+
+
 def extract_commerce_detail_summary(title: str, desc: str, raw: str) -> List[str]:
     sample = clean(re.sub(r"<[^>]+>", " ", raw or ""))[:8000]
     candidates: List[str] = []
@@ -705,6 +711,17 @@ def is_homepage_like(url: str) -> bool:
     if not path:
         return True
     return path in {"search", "search_result", "results", "all", "blog", "models"}
+
+
+def is_generic_commerce_channel_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    path = parsed.path.lower().strip("/")
+    if root in {"yangkeduo.com", "pinduoduo.com"}:
+        return path.startswith("home/") or path in {"", "index.html"}
+    if root in {"taobao.com", "tmall.com"}:
+        return "/list/category/" in parsed.path.lower() or "/list/product/" in parsed.path.lower()
+    return False
 
 
 def http_get(url: str, timeout: int = 20) -> str:
@@ -2389,6 +2406,8 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                 continue
         elif domain not in item_domain:
             continue
+        if commerce_root in COMMERCE_ROOTS and is_generic_commerce_channel_url(item.url):
+            continue
         if commerce_root in COMMERCE_ROOTS:
             combined = f"{item.title} {item.snippet}"
             overlap = query_overlap_score(combined, query)
@@ -2523,6 +2542,8 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                     item.score += 18
                 if root in COMMERCE_ROOTS:
                     item.score += commerce_result_bonus(item.title, item.snippet, query)
+                    if has_brand_context(f"{item.title} {item.snippet} {item.url}", brand):
+                        item.score += 0.22
                 collected.append(item)
     collected.sort(key=lambda item: item.score, reverse=True)
     deep_hits = []
@@ -2567,7 +2588,17 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                 "source_query": queries[:4],
                 "applied_rules": ["quality_gating", "external_discovery_fallback", "followup_refinement"],
             }
-    useful = collected[:5]
+    useful = []
+    for item in collected:
+        if root in COMMERCE_ROOTS:
+            combined = f"{item.title} {item.snippet} {item.url}"
+            if not has_brand_context(combined, brand) and not has_commerce_content_signal([combined]):
+                continue
+            if query_overlap_score(combined, query) < 1 and not has_commerce_content_signal([combined]):
+                continue
+        useful.append(item)
+        if len(useful) >= 5:
+            break
     if not useful:
         return None
     return {

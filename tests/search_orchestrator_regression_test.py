@@ -1548,6 +1548,12 @@ def test_commerce_domain_fallback_returns_none_for_generic_channel_pages():
     assert result is None
 
 
+def test_generic_commerce_channel_urls_are_filtered():
+    assert module.is_generic_commerce_channel_url("https://www.yangkeduo.com/home/sale/") is True
+    assert module.is_generic_commerce_channel_url("https://www.taobao.com/list/product/%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA.htm") is True
+    assert module.is_generic_commerce_channel_url("https://mobile.yangkeduo.com/goods.html?goods_id=123") is False
+
+
 def test_commerce_external_discovery_uses_product_suffixes():
     original = module.search_engine
     seen_queries = []
@@ -1568,6 +1574,42 @@ def test_commerce_external_discovery_uses_product_suffixes():
     joined = " | ".join(seen_queries)
     assert "蓝牙耳机 拼多多 商品" in joined
     assert "蓝牙耳机 拼多多 测评" in joined
+
+
+def test_commerce_external_discovery_filters_generic_bluetooth_articles():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "蓝牙 （短距离无线通信技术）_百度百科",
+                "https://baike.baidu.com/item/%E8%93%9D%E7%89%99/102670",
+                "一种短距离无线通信技术",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "拼多多蓝牙耳机测评 - 抖音",
+                "https://www.douyin.com/search/%E6%8B%BC%E5%A4%9A%E5%A4%9A%E8%93%9D%E7%89%99%E8%80%B3%E6%9C%BA",
+                "拼多多 蓝牙耳机 测评 推荐",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+            "蓝牙耳机",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["links"][0]["href"].startswith("https://www.douyin.com/search/")
 
 
 def test_producthunt_domain_fallback_uses_producthunt_suffixes():

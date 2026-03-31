@@ -614,13 +614,13 @@ def commerce_external_source_bonus(url: str, title: str, snippet: str) -> float:
     combined = clean(f"{title} {snippet}")
     bonus = 0.0
     if item_root == "zhizhizhi.com":
-        bonus += 0.28
+        bonus += 0.42
     elif item_root in {"smzdm.com", "zol.com.cn"}:
-        bonus += 0.22
+        bonus += 0.30
     if item_root in {"bilibili.com"} and any(token in combined for token in ("测评", "评测", "开箱")):
-        bonus += 0.14
+        bonus += 0.18
     if any(token in combined for token in ("优惠券", "到手价", "价格", "测评", "评测", "推荐")):
-        bonus += 0.08
+        bonus += 0.12
     return bonus
 
 
@@ -630,10 +630,16 @@ def commerce_external_source_penalty(url: str, title: str, snippet: str) -> floa
     combined = clean(f"{title} {snippet}")
     penalty = 0.0
     if item_root == "zhihu.com":
-        penalty += 0.08
-        if any(token in combined for token in ("能买吗", "怎么这么便宜", "值不值得", "好用吗")):
-            penalty += 0.18
+        penalty += 0.14
+        if any(token in combined for token in ("能买吗", "怎么这么便宜", "值不值得", "好用吗", "靠谱吗")):
+            penalty += 0.28
+    if item_root == "baidu.com" or item_root == "zhidao.baidu.com":
+        penalty += 0.14
     return penalty
+
+
+def commerce_external_rank(url: str, title: str, snippet: str) -> float:
+    return commerce_external_source_bonus(url, title, snippet) - commerce_external_source_penalty(url, title, snippet)
 
 
 def has_commerce_content_signal(lines: List[str]) -> bool:
@@ -2741,6 +2747,14 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
             break
     if not useful:
         return None
+    if root in COMMERCE_ROOTS:
+        useful.sort(
+            key=lambda item: (
+                -commerce_external_rank(item.url, item.title, item.snippet),
+                looks_like_search_or_shell_url(item.url),
+                -score_result(item, query),
+            )
+        )
     return {
         "url": url,
         "fetch_mode": "external_discovery_fallback",

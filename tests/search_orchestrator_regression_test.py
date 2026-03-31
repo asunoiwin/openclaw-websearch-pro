@@ -1873,6 +1873,66 @@ def test_commerce_external_discovery_penalizes_generic_zhihu_purchase_questions(
     assert result["links"][0]["href"] == "https://dcdv.zol.com.cn/1068/10685590.html"
 
 
+def test_commerce_external_source_weighting_demotes_zhihu_question_style_results():
+    zhihu_penalty = module.commerce_external_source_penalty(
+        "https://www.zhihu.com/question/585602161",
+        "拼多多上有什么好用的蓝牙耳机吗？",
+        "性价比好的就行 好用吗 值不值得买",
+    )
+    zol_bonus = module.commerce_external_source_bonus(
+        "https://dcdv.zol.com.cn/1068/10685590.html",
+        "拼多多百亿补贴漫步者2025蓝牙耳机_数码影音音频-中关村在线",
+        "价格 评测 优惠",
+    )
+    assert zhihu_penalty > 0.3
+    assert zol_bonus > 0.3
+
+
+def test_commerce_external_final_sort_prefers_review_or_price_sources():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "拼多多里10几块钱的蓝牙耳机，真的能用吗？ - 知乎",
+                "https://zhuanlan.zhihu.com/p/1986249433101402943",
+                "值不值得买 好用吗",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "拼多多耳机\\耳麦价格和优惠券 - 值值值",
+                "https://www.zhizhizhi.com/c/ermai/shop/pinduoduo",
+                "优惠券 比价",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "拼多多蓝牙耳机吐血推荐 - 什么值得买",
+                "https://post.smzdm.com/p/agqzg0z7/",
+                "测评 推荐",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+            "蓝牙耳机",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    top_two = [link["href"] for link in result["links"][:2]]
+    assert "https://zhuanlan.zhihu.com/p/1986249433101402943" not in top_two
+
+
 def test_producthunt_domain_fallback_uses_producthunt_suffixes():
     original = module.search_engine
     seen_queries = []

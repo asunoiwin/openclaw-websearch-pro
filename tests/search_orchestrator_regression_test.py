@@ -327,10 +327,17 @@ def test_sanitize_douyin_profile_text_drops_missing_video_shell():
     assert module.sanitize_douyin_profile_text(raw) == ""
 
 
+def test_extract_douyin_profile_stats():
+    stats = module.extract_douyin_profile_stats("已经收获了12个喜欢 3条评论 1次分享 来抖音，记录美好生活！")
+    assert "12个喜欢" in stats
+    assert "3条评论" in stats
+    assert "1次分享" in stats
+
+
 def test_build_douyin_profile_result_uses_description_when_body_is_shell():
     payload = {
         "title": "在抖音记录美好生活20260331 - 抖音",
-        "description": "于20260331发布在抖音，已经收获了0个喜欢，来抖音，记录美好生活！",
+        "description": "于20260331发布在抖音，已经收获了12个喜欢、3条评论，来抖音，记录美好生活！",
         "text": "你要观看的视频不存在 广告投放 用户服务协议",
         "headings": [],
     }
@@ -344,6 +351,9 @@ def test_build_douyin_profile_result_uses_description_when_body_is_shell():
     assert "mediacrawler_douyin_profile" in result["applied_rules"]
     assert "persistent_profile_login" in result["applied_rules"]
     assert result["summary"]
+    joined = " | ".join(result["summary"])
+    assert "12个喜欢" in joined
+    assert any("12个喜欢" in section.get("text", "") for section in result["sections"])
 
 
 def test_mediacrawler_douyin_profile_adapter_uses_persistent_profile():
@@ -1744,6 +1754,51 @@ def test_commerce_external_discovery_penalizes_social_search_pages_for_taobao():
     assert result is not None
     assert result["links"][0]["href"].startswith("https://www.taobao.com/")
     assert all("douyin.com/search" not in link["href"] for link in result["links"])
+
+
+def test_commerce_external_discovery_dedupes_repeated_zhihu_results():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "拼多多上的耳机怎么这么便宜？上面的耳机真的能买吗？ - 知乎",
+                "https://www.zhihu.com/question/387634838",
+                "百元以内蓝牙耳机推荐",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "拼多多上的耳机怎么这么便宜？上面的耳机真的能买吗？ - 知乎",
+                "https://www.zhihu.com/question/387634838/answers/updated",
+                "同一问题的更新回答",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "拼多多耳机\\耳麦价格和优惠券 - 值值值",
+                "https://www.zhizhizhi.com/c/ermai/shop/pinduoduo",
+                "优惠券 比价",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+            "蓝牙耳机",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    zhihu_links = [link["href"] for link in result["links"] if "zhihu.com" in link["href"]]
+    assert len(zhihu_links) == 1
 
 
 def test_producthunt_domain_fallback_uses_producthunt_suffixes():

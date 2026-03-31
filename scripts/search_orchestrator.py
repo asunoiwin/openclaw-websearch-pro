@@ -1284,22 +1284,52 @@ def sanitize_douyin_profile_text(text: str) -> str:
     return clean(sample[:1600])
 
 
+def extract_douyin_profile_stats(text: str) -> List[str]:
+    sample = clean(text)
+    if not sample:
+        return []
+    patterns = [
+        r"\d+(?:\.\d+)?万?个喜欢",
+        r"\d+(?:\.\d+)?万?次播放",
+        r"\d+(?:\.\d+)?万?条评论",
+        r"\d+(?:\.\d+)?万?次分享",
+        r"\d+(?:\.\d+)?万?次收藏",
+    ]
+    results: List[str] = []
+    seen = set()
+    for pattern in patterns:
+        match = re.search(pattern, sample)
+        if not match:
+            continue
+        value = clean(match.group(0))
+        if value and value not in seen:
+            seen.add(value)
+            results.append(value)
+    return results[:5]
+
+
 def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | None:
     if not isinstance(payload, dict):
         return None
     title = clean(payload.get("title", ""))
     description = clean(payload.get("description", ""))
     body_text = sanitize_douyin_profile_text(payload.get("text", ""))
+    stats = extract_douyin_profile_stats(" ".join(part for part in (description, body_text) if part))
     summary = summarize_text(" ".join(part for part in (description, body_text) if part), query)
     if not summary and description:
         summary = [description[:280]]
     if not summary and title:
         summary = [title[:280]]
+    for stat in stats:
+        if stat not in summary:
+            summary.append(stat)
     if not summary:
         return None
     sections = []
     if description:
         sections.append({"level": "meta", "text": description[:220]})
+    if stats:
+        sections.append({"level": "meta", "text": " | ".join(stats)})
     for heading in payload.get("headings", [])[:5]:
         heading = clean(heading)
         if heading:
@@ -2654,16 +2684,27 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                 "applied_rules": ["quality_gating", "external_discovery_fallback", "followup_refinement"],
             }
     useful = []
+    seen_titles = set()
+    domain_counts: Dict[str, int] = {}
     for item in collected:
         if root in COMMERCE_ROOTS:
             combined = f"{item.title} {item.snippet} {item.url}"
             item_root = root_domain(urllib.parse.urlparse(item.url).netloc.lower())
+            title_key = clean(item.title).lower()
             if not has_brand_context(combined, brand) and not has_commerce_content_signal([combined]):
                 continue
             if query_overlap_score(combined, query) < 1 and not has_commerce_content_signal([combined]):
                 continue
             if item_root != root and looks_like_search_or_shell_url(item.url) and not has_commerce_content_signal([combined]):
                 continue
+            if title_key and title_key in seen_titles:
+                continue
+            if item_root:
+                if domain_counts.get(item_root, 0) >= 2:
+                    continue
+                domain_counts[item_root] = domain_counts.get(item_root, 0) + 1
+            if title_key:
+                seen_titles.add(title_key)
         useful.append(item)
         if len(useful) >= 5:
             break

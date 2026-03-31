@@ -5,6 +5,7 @@ import html
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -23,12 +24,16 @@ BRIDGE = HERE / "browser_session_bridge.py"
 DISTILL = HERE / "web_content_distill.py"
 DOUYIN_PROJECT = Path(os.environ.get("OPENCLAW_DOUYIN_PROJECT", "/tmp/douyin_proj"))
 XHS_PROJECT = Path(os.environ.get("OPENCLAW_XHS_PROJECT", "/tmp/xhs_mcp"))
+MEDIACRAWLER_PROJECT = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_PROJECT", "/tmp/MediaCrawler"))
 PY311 = os.environ.get("OPENCLAW_PY311", "/opt/homebrew/bin/python3.11")
 CHROME_BIN = os.environ.get("OPENCLAW_CHROME_BIN", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 XHS_BASE_URL = os.environ.get("OPENCLAW_XHS_BASE_URL", "http://127.0.0.1:18060")
 XHS_PID_FILE = Path(os.environ.get("OPENCLAW_XHS_PID_FILE", "/tmp/openclaw_xhs_mcp.pid"))
 XHS_LOG_FILE = Path(os.environ.get("OPENCLAW_XHS_LOG_FILE", "/tmp/openclaw_xhs_mcp.log"))
 XHS_BINARY = Path(os.environ.get("OPENCLAW_XHS_BINARY", str(XHS_PROJECT / "xhs_mcp_bin")))
+MEDIACRAWLER_VENV_PYTHON = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_PYTHON", str(MEDIACRAWLER_PROJECT / ".venv" / "bin" / "python")))
+DOUYIN_COOKIE_FILE = Path(os.environ.get("OPENCLAW_DOUYIN_COOKIE_FILE", "/Users/rico/.openclaw/workspace/secrets/douyin-cookie.txt"))
+MEDIACRAWLER_OUTPUT_BASE = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_OUTPUT_BASE", "/tmp/openclaw_mediacrawler"))
 YT_DLP = ["python3", "-m", "yt_dlp"]
 GALLERY_DL = ["python3", "-m", "gallery_dl"]
 READER_FIRST_DOMAINS = {
@@ -214,6 +219,21 @@ def douyin_project_available() -> bool:
     return DOUYIN_PROJECT.exists() and command_available(PY311)
 
 
+def mediacrawler_available() -> bool:
+    return MEDIACRAWLER_PROJECT.exists() and MEDIACRAWLER_VENV_PYTHON.exists()
+
+
+def load_cookie_file(path: Path) -> str:
+    try:
+        value = clean(path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    if not value:
+        return ""
+    value = re.sub(r"^cookie:\s*", "", value, flags=re.I)
+    return clean(value)
+
+
 def local_http_get(url: str, timeout: int = 10) -> str:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -351,7 +371,12 @@ def adapter_blocker_rules(url: str) -> List[str]:
     path = parsed.path.lower()
     rules: List[str] = []
     if root == "douyin.com" and "/video/" in path:
-        if not douyin_project_available():
+        if mediacrawler_available():
+            if not load_cookie_file(DOUYIN_COOKIE_FILE):
+                rules.append("douyin_cookie_file_missing")
+            else:
+                rules.append("douyin_mediacrawler_probe_failed")
+        elif not douyin_project_available():
             rules.append("douyin_adapter_runtime_missing")
         else:
             rules.append("douyin_adapter_probe_failed")
@@ -474,6 +499,28 @@ def commerce_result_bonus(title: str, snippet: str, query: str) -> float:
 def has_commerce_content_signal(lines: List[str]) -> bool:
     sample = " ".join(clean(line) for line in lines if line)
     return len(extract_commerce_signals(sample)) >= 1
+
+
+def is_actionable_non_product_query(query: str) -> bool:
+    sample = clean(query).lower()
+    tokens = [
+        "openclaw",
+        "clawhub",
+        "plugin",
+        "skill",
+        "mcp",
+        "github",
+        "教程",
+        "安装",
+        "配置",
+        "自动化",
+        "优化",
+        "文档",
+        "脚本",
+        "部署",
+        "开发",
+    ]
+    return any(token in sample for token in tokens)
 
 
 def fallback_order_for_url(url: str) -> Tuple[str, ...]:
@@ -891,6 +938,107 @@ def extract_douyin_project_special(url: str, query: str) -> Dict | None:
     }
 
 
+def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    if root != "douyin.com" or "/video/" not in parsed.path.lower():
+        return None
+    if not mediacrawler_available():
+        return None
+    cookie_str = load_cookie_file(DOUYIN_COOKIE_FILE)
+    if not cookie_str:
+        return None
+
+    stamp = str(int(time.time() * 1000))
+    out_dir = MEDIACRAWLER_OUTPUT_BASE / stamp
+    cmd = [
+        str(MEDIACRAWLER_VENV_PYTHON),
+        "main.py",
+        "--platform",
+        "dy",
+        "--lt",
+        "cookie",
+        "--type",
+        "detail",
+        "--specified_id",
+        url,
+        "--cookies",
+        cookie_str,
+        "--headless",
+        "true",
+        "--save_data_option",
+        "json",
+        "--save_data_path",
+        str(out_dir),
+        "--get_comment",
+        "false",
+        "--get_sub_comment",
+        "false",
+        "--max_concurrency_num",
+        "1",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(MEDIACRAWLER_PROJECT),
+            text=True,
+            capture_output=True,
+            timeout=90,
+        )
+        if proc.returncode != 0:
+            return None
+
+        candidates = sorted((out_dir / "douyin" / "json").glob("detail_contents_*.json"))
+        if not candidates:
+            return None
+        try:
+            payload = json.loads(candidates[-1].read_text(encoding="utf-8"))
+        except Exception:
+            return None
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    if isinstance(payload, list):
+        item = payload[-1] if payload else {}
+    else:
+        item = payload
+    if not isinstance(item, dict):
+        return None
+
+    title = clean(item.get("title", "") or item.get("desc", ""))
+    author = clean(item.get("nickname", ""))
+    stats = []
+    for field in ("liked_count", "collected_count", "comment_count", "share_count"):
+        value = item.get(field)
+        if value not in (None, "", 0, "0"):
+            stats.append(f"{field}={value}")
+    text = " ".join(part for part in [title, author, " ".join(stats)] if part)
+    summary = summarize_text(text, query)
+    if not summary and title:
+        summary = [title[:280]]
+    if not summary:
+        return None
+    sections = []
+    if author:
+        sections.append({"level": "meta", "text": f"author: {author}"})
+    if stats:
+        sections.append({"level": "meta", "text": ", ".join(stats)})
+    links = []
+    for field in ("cover_url", "video_download_url", "music_download_url"):
+        value = clean(item.get(field, ""))
+        if value.startswith("http"):
+            links.append({"label": field, "url": value})
+    return {
+        "url": url,
+        "fetch_mode": "mediacrawler_douyin",
+        "title": title or author or "Douyin Video",
+        "summary": summary[:5],
+        "sections": sections[:8],
+        "links": links[:10],
+        "quality": "high" if len(summary) >= 2 else "medium",
+        "applied_rules": ["mediacrawler_douyin", "cookie_file_login"],
+    }
+
+
 def extract_xhs_mcp_special(url: str, query: str) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
     root = root_domain(parsed.netloc.lower())
@@ -1064,7 +1212,11 @@ def audit_browser_session(url: str) -> Dict | None:
 def run_fallbacks(url: str, query: str, allow_fallback: bool = True, follow_depth: bool = True) -> Dict | None:
     if not allow_fallback:
         return None
-    for mode in fallback_order_for_url(url):
+    order = fallback_order_for_url(url)
+    root = root_domain(urllib.parse.urlparse(url).netloc.lower())
+    if root in COMMERCE_ROOTS and is_actionable_non_product_query(query):
+        order = tuple(mode for mode in ("external", "domain", "browser") if mode in order)
+    for mode in order:
         if mode == "browser":
             if not ENABLE_BROWSER_FALLBACK:
                 continue
@@ -2001,6 +2153,7 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         or extract_reddit_special(url, query)
         or extract_twitter_oembed_special(url, query)
         or extract_xhs_mcp_special(url, query)
+        or extract_mediacrawler_douyin_special(url, query)
         or extract_douyin_project_special(url, query)
         or extract_gallery_dl_special(url, query)
         or extract_yt_dlp_special(url, query)

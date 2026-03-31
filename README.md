@@ -209,6 +209,9 @@ Current specialized paths include:
 - Xiaohongshu runtime blockers
   - `xhs_adapter_bootstrap_blocked`: local Go service is still blocked in dependency bootstrap and has not become healthy yet
   - `xhs_adapter_login_required`: local service is up but the account is not logged in
+- Douyin runtime blockers
+  - `douyin_cookie_file_missing`: MediaCrawler path is available but no explicit Douyin cookie file was provided
+  - `douyin_mediacrawler_probe_failed`: MediaCrawler path was attempted but did not return usable detail content
   - when in-site pages are shells, error pages, or unreadable JS apps, external discovery now biases toward `GitHub / skill / MCP / tutorial / automation` results instead of generic platform blurbs
 - Search result pages
   - Google

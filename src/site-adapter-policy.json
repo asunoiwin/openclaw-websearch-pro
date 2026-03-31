@@ -19,7 +19,7 @@
     },
     "douyin.com": {
       "mode": "external_or_custom_adapter",
-      "reason": "优先使用本地 Douyin 解析项目（Python 3.11）获取视频详情；当 cookies 不新鲜或接口返回空内容时，回退到外部发现，并偏向 GitHub/skill/MCP/教程 结果。"
+      "reason": "优先使用本地 Douyin 解析项目（Python 3.11）或 MediaCrawler detail 模式获取视频详情；MediaCrawler 需要显式 cookie 文件。当前若 cookies 不新鲜、cookie 文件缺失或接口返回空内容，则回退到外部发现，并偏向 GitHub/skill/MCP/教程结果。"
     },
     "bilibili.com": {
       "mode": "yt_dlp_or_custom_extract",

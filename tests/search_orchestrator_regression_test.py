@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
+import tempfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -252,6 +253,73 @@ def test_yt_dlp_adapter_for_reddit_content_page():
     assert result["fetch_mode"] == "yt_dlp"
     assert "yt_dlp_adapter" in result["applied_rules"]
     assert "browser_cookies_chrome" in result["applied_rules"]
+
+
+def test_load_cookie_file_normalizes_prefix():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cookie_file = Path(tmpdir) / "douyin-cookie.txt"
+        cookie_file.write_text("Cookie: foo=1; bar=2", encoding="utf-8")
+        assert module.load_cookie_file(cookie_file) == "foo=1; bar=2"
+
+
+def test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json():
+    original_available = module.mediacrawler_available
+    original_cookie_file = module.DOUYIN_COOKIE_FILE
+    original_python = module.MEDIACRAWLER_VENV_PYTHON
+    original_project = module.MEDIACRAWLER_PROJECT
+    original_output = module.MEDIACRAWLER_OUTPUT_BASE
+    original_run = module.subprocess.run
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base = Path(tmpdir)
+            cookie_file = base / "douyin-cookie.txt"
+            cookie_file.write_text("sid=abc; sessionid=xyz", encoding="utf-8")
+            project = base / "MediaCrawler"
+            project.mkdir()
+            fake_python = base / "python"
+            fake_python.write_text("", encoding="utf-8")
+            fake_python.chmod(0o755)
+            output_base = base / "out"
+
+            class FakeProc:
+                def __init__(self):
+                    self.returncode = 0
+                    self.stdout = ""
+                    self.stderr = ""
+
+            def fake_run(cmd, cwd=None, text=True, capture_output=True, timeout=90):
+                save_path = Path(cmd[cmd.index("--save_data_path") + 1])
+                target = save_path / "douyin" / "json"
+                target.mkdir(parents=True, exist_ok=True)
+                (target / "detail_contents_2026-03-31.json").write_text(
+                    '[{"title":"OpenClaw 抖音教程","nickname":"AI学长","liked_count":"123","comment_count":"8","cover_url":"https://example.com/c.jpg"}]',
+                    encoding="utf-8",
+                )
+                return FakeProc()
+
+            module.mediacrawler_available = lambda: True
+            module.DOUYIN_COOKIE_FILE = cookie_file
+            module.MEDIACRAWLER_VENV_PYTHON = fake_python
+            module.MEDIACRAWLER_PROJECT = project
+            module.MEDIACRAWLER_OUTPUT_BASE = output_base
+            module.subprocess.run = fake_run
+
+            result = module.extract_mediacrawler_douyin_special(
+                "https://www.douyin.com/video/7488202296297166114",
+                "OpenClaw 抖音教程",
+            )
+
+            assert result is not None
+            assert result["fetch_mode"] == "mediacrawler_douyin"
+            assert "mediacrawler_douyin" in result["applied_rules"]
+            assert "cookie_file_login" in result["applied_rules"]
+    finally:
+        module.mediacrawler_available = original_available
+        module.DOUYIN_COOKIE_FILE = original_cookie_file
+        module.MEDIACRAWLER_VENV_PYTHON = original_python
+        module.MEDIACRAWLER_PROJECT = original_project
+        module.MEDIACRAWLER_OUTPUT_BASE = original_output
+        module.subprocess.run = original_run
 
 
 def test_external_discovery_deep_fallback_prefers_nested_content():
@@ -767,9 +835,12 @@ def test_xhs_mcp_adapter():
 
 def test_adapter_blocker_rules_for_xhs_and_douyin():
     original_douyin_available = module.douyin_project_available
+    original_mediacrawler_available = module.mediacrawler_available
     original_xhs_start = module.ensure_xhs_service_started
     original_xhs_bootstrap = module.xhs_runtime_bootstrap_blocked
+    original_cookie_file = module.DOUYIN_COOKIE_FILE
     module.douyin_project_available = lambda: False
+    module.mediacrawler_available = lambda: False
     module.ensure_xhs_service_started = lambda: False
     module.xhs_runtime_bootstrap_blocked = lambda: False
     try:
@@ -777,11 +848,28 @@ def test_adapter_blocker_rules_for_xhs_and_douyin():
         xhs_rules = module.adapter_blocker_rules("https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=3b4c5d6e7f8g9h0i")
     finally:
         module.douyin_project_available = original_douyin_available
+        module.mediacrawler_available = original_mediacrawler_available
         module.ensure_xhs_service_started = original_xhs_start
         module.xhs_runtime_bootstrap_blocked = original_xhs_bootstrap
+        module.DOUYIN_COOKIE_FILE = original_cookie_file
 
     assert "douyin_adapter_runtime_missing" in douyin_rules
     assert "xhs_adapter_service_unavailable" in xhs_rules
+
+
+def test_adapter_blocker_rules_for_douyin_cookie_file_missing():
+    original_mediacrawler_available = module.mediacrawler_available
+    original_cookie_file = module.DOUYIN_COOKIE_FILE
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            module.mediacrawler_available = lambda: True
+            module.DOUYIN_COOKIE_FILE = Path(tmpdir) / "missing-cookie.txt"
+            douyin_rules = module.adapter_blocker_rules("https://www.douyin.com/video/7488202296297166114")
+    finally:
+        module.mediacrawler_available = original_mediacrawler_available
+        module.DOUYIN_COOKIE_FILE = original_cookie_file
+
+    assert "douyin_cookie_file_missing" in douyin_rules
 
 
 def test_adapter_blocker_rules_for_xhs_login_required():
@@ -805,13 +893,19 @@ def test_adapter_blocker_rules_for_xhs_login_required():
 
 def test_adapter_blocker_rules_for_xhs_bootstrap_blocked():
     original_bootstrap = module.xhs_runtime_bootstrap_blocked
+    original_start = module.ensure_xhs_service_started
+    original_available = module.xhs_service_available
     module.xhs_runtime_bootstrap_blocked = lambda: True
+    module.ensure_xhs_service_started = lambda: False
+    module.xhs_service_available = lambda: False
     try:
         xhs_rules = module.adapter_blocker_rules(
-            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=abc123"
+            "https://www.xiaohongshu.com/explore/65f2d9f50000000001027d63?xsec_token=3b4c5d6e7f8g9h0i"
         )
     finally:
         module.xhs_runtime_bootstrap_blocked = original_bootstrap
+        module.ensure_xhs_service_started = original_start
+        module.xhs_service_available = original_available
 
     assert "xhs_adapter_bootstrap_blocked" in xhs_rules
 
@@ -920,6 +1014,48 @@ def test_commerce_deep_fallback_rejects_non_product_tutorial_content():
     assert result["fetch_mode"] == "domain_search_fallback"
 
 
+def test_actionable_non_product_query_prefers_external_on_commerce_sites():
+    original_domain = module.extract_domain_search_fallback
+    original_external = module.extract_external_discovery_fallback
+    try:
+        module.extract_domain_search_fallback = lambda url, query, follow_depth=True: {
+            "fetch_mode": "domain_search_fallback",
+            "summary": ["domain"],
+        }
+        module.extract_external_discovery_fallback = lambda url, query: {
+            "fetch_mode": "external_discovery_fallback",
+            "summary": ["external"],
+        }
+        result = module.run_fallbacks("https://s.taobao.com/search?q=openclaw", "openclaw 插件优化")
+    finally:
+        module.extract_domain_search_fallback = original_domain
+        module.extract_external_discovery_fallback = original_external
+
+    assert result is not None
+    assert result["fetch_mode"] == "external_discovery_fallback"
+
+
+def test_product_query_keeps_domain_priority_on_commerce_sites():
+    original_domain = module.extract_domain_search_fallback
+    original_external = module.extract_external_discovery_fallback
+    try:
+        module.extract_domain_search_fallback = lambda url, query, follow_depth=True: {
+            "fetch_mode": "domain_search_fallback",
+            "summary": ["domain"],
+        }
+        module.extract_external_discovery_fallback = lambda url, query: {
+            "fetch_mode": "external_discovery_fallback",
+            "summary": ["external"],
+        }
+        result = module.run_fallbacks("https://s.taobao.com/search?q=蓝牙耳机", "蓝牙耳机")
+    finally:
+        module.extract_domain_search_fallback = original_domain
+        module.extract_external_discovery_fallback = original_external
+
+    assert result is not None
+    assert result["fetch_mode"] == "domain_search_fallback"
+
+
 
 if __name__ == "__main__":
     test_pypi_search_page_extractor()
@@ -931,6 +1067,8 @@ if __name__ == "__main__":
     test_browser_session_fallback_for_low_signal_pages()
     test_yt_dlp_adapter_for_content_page()
     test_yt_dlp_adapter_for_reddit_content_page()
+    test_load_cookie_file_normalizes_prefix()
+    test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json()
     test_gallery_dl_adapter_for_reddit_submission()
     test_twitter_oembed_adapter_for_text_status()
     test_known_error_shell_triggers_fallback_for_xiaohongshu()
@@ -947,6 +1085,7 @@ if __name__ == "__main__":
     test_douyin_project_adapter()
     test_xhs_mcp_adapter()
     test_adapter_blocker_rules_for_xhs_and_douyin()
+    test_adapter_blocker_rules_for_douyin_cookie_file_missing()
     test_adapter_blocker_rules_for_xhs_login_required()
     test_adapter_blocker_rules_for_xhs_bootstrap_blocked()
     test_adapter_blocker_rules_for_xhs_invalid_xsec_token()
@@ -954,4 +1093,6 @@ if __name__ == "__main__":
     test_domain_search_fallback_formats_commerce_results()
     test_commerce_bonus_prefers_product_like_result()
     test_commerce_deep_fallback_rejects_non_product_tutorial_content()
+    test_actionable_non_product_query_prefers_external_on_commerce_sites()
+    test_product_query_keeps_domain_priority_on_commerce_sites()
     print("search orchestrator regression tests passed")

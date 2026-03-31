@@ -58,8 +58,8 @@
       "reason": "公开项目和 issue 页现在优先用站内 meta 提取；命中登录页、验证页或私有资源时再回退到站外发现。"
     },
     "producthunt.com": {
-      "mode": "meta_or_domain_deep_fallback",
-      "reason": "公开产品页现在优先用站内 meta 提取；搜索页和弱页继续保留域内深跟进回退。"
+      "mode": "meta_or_fallback_only",
+      "reason": "公开产品页经常返回 challenge/空 DOM。当前保留站内 meta 提取；目标详情无法稳定公开直提时，直接走域内/站外 fallback，不再依赖浏览器深提取。"
     }
   }
 }

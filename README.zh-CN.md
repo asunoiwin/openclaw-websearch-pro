@@ -281,6 +281,10 @@
 - Product Hunt
 - GitLab
 
+补充：
+
+- `Product Hunt` 在本机浏览器里虽然能打开目标 URL，但正文 DOM 仍经常为空，所以搜索器把它归类为 `meta + fallback` 站点，而不是浏览器深提取站点。
+
 在真正走浏览器回退前，搜索器现在会先做一次登录态预审：
 
 1. 检查目标浏览器是否在运行
@@ -397,7 +401,8 @@ python3 scripts/browser_session_bridge.py close-front safari
 - GitLab：
   - 当前以站内 meta 提取为主，登录/验证失败时再回退到站外发现
 - Product Hunt：
-  - 当前以站内 meta 提取为主，搜索页和弱页保留域内深跟进
+  - 当前只保留站内 meta 提取作为直提路径
+  - 原因是本机上公开页经常返回 challenge 壳层或空 DOM，不把它当成稳定详情站点
 
 ## 站点语义外部发现兜底
 

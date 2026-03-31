@@ -266,8 +266,8 @@ When a target page is blocked or degraded, the orchestrator can synthesize a usa
   - Use in-site meta extraction as primary for public pages.
   - Reason: public project and issue pages expose enough title/description metadata without forcing browser login.
 - Product Hunt
-  - Use in-site meta extraction as primary for public product pages.
-  - Reason: public product pages expose enough metadata while search pages still benefit from domain-deep fallback.
+  - Keep in-site meta extraction as the only direct path for public product pages.
+  - Reason: public pages frequently return challenge shells or empty browser DOM on this machine, so exact post detail is not treated as a stable direct-extraction target.
 - Reddit / X / GitHub / ecommerce sites
   - Do not force `MediaCrawler`.
   - Reason: it does not cover those sites, and the current adapters are a better fit.
@@ -311,6 +311,10 @@ The fallback is not a blind browser read. It:
 2. extracts title, URL, DOM text, headings, and links
 3. if the page is a search result page, builds query-aligned snippets instead of summarizing navigation chrome
 4. rejects mismatched pages, login shells, and challenge pages rather than falsely marking them as useful hits
+
+Note:
+
+- Product Hunt browser pages currently open, but the DOM remains empty on this machine. The orchestrator therefore treats Product Hunt as a `meta + fallback` site rather than a browser-detail site.
 
 Before that fallback is trusted, the orchestrator also performs a browser auth audit:
 

@@ -1280,6 +1280,71 @@ def test_external_discovery_fallback_for_quora_search_shell():
     assert "quora" in " ".join(result["source_query"]).lower()
 
 
+def test_known_error_shell_detects_aliexpress_punish_page():
+    raw = '''
+    <script>
+    sessionStorage.x5referer = window.location.href;
+    var url = window.location.protocol + "//www.aliexpress.com///_____tmd_____/punish?x5secdata=deadbeef";
+    </script>
+    '''
+    assert module.looks_like_known_error_shell("", raw, "https://www.aliexpress.com") is True
+
+
+def test_commerce_homepage_generic_reader_forces_fallback():
+    original_fetch = module.fetch_with_reader_fallback
+    original_fallbacks = module.run_fallbacks
+
+    module.fetch_with_reader_fallback = lambda url: (
+        "Walmart | Save Money. Live better. Departments Services Rollbacks More Pickup Delivery",
+        "reader",
+    )
+    module.run_fallbacks = lambda url, query, allow_fallback=True, follow_depth=True: {
+        "url": url,
+        "fetch_mode": "domain_search_fallback",
+        "title": "walmart.com",
+        "summary": ["Bluetooth Earbuds - Walmart"],
+        "sections": [{"level": "results", "text": "Bluetooth Earbuds - Walmart"}],
+        "links": [{"text": "Bluetooth Earbuds - Walmart", "href": "https://www.walmart.com/search?q=bluetooth+earbuds"}],
+        "quality": "medium",
+        "applied_rules": ["quality_gating", "domain_search_fallback"],
+    }
+    try:
+        result = module.deep_extract("https://www.walmart.com", "bluetooth earbuds")
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.run_fallbacks = original_fallbacks
+
+    assert result["fetch_mode"] == "domain_search_fallback"
+
+
+def test_commerce_homepage_skip_bypasses_fetch():
+    original_fetch = module.fetch_with_reader_fallback
+    original_fallbacks = module.run_fallbacks
+
+    def fail_fetch(_url):
+        raise AssertionError("fetch_with_reader_fallback should not run for commerce homepages")
+
+    module.fetch_with_reader_fallback = fail_fetch
+    module.run_fallbacks = lambda url, query, allow_fallback=True, follow_depth=True: {
+        "url": url,
+        "fetch_mode": "domain_search_fallback",
+        "title": "ebay.com",
+        "summary": ["Bluetooth Earbuds | eBay"],
+        "sections": [{"level": "results", "text": "Bluetooth Earbuds | eBay"}],
+        "links": [{"text": "Bluetooth Earbuds | eBay", "href": "https://www.ebay.com/sch/i.html?_nkw=bluetooth+earbuds"}],
+        "quality": "medium",
+        "applied_rules": ["domain_search_fallback"],
+    }
+    try:
+        result = module.deep_extract("https://www.ebay.com", "bluetooth earbuds")
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.run_fallbacks = original_fallbacks
+
+    assert result["fetch_mode"] == "domain_search_fallback"
+    assert "commerce_homepage_skip" in result.get("applied_rules", [])
+
+
 def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
     raw = """
     <html><head>

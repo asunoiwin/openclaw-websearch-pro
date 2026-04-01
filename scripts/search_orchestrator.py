@@ -50,6 +50,17 @@ READER_FIRST_DOMAINS = {
     "www.douyin.com",
     "reddit.com",
     "www.reddit.com",
+    "infoq.cn",
+    "www.infoq.cn",
+    "developer.aliyun.com",
+    "51cto.com",
+    "www.51cto.com",
+    "huxiu.com",
+    "www.huxiu.com",
+    "ebay.com",
+    "www.ebay.com",
+    "aliexpress.com",
+    "www.aliexpress.com",
 }
 BROWSER_ASSIST_DOMAINS = {
     "zhihu.com",
@@ -180,6 +191,14 @@ COMMERCE_ROOTS = {
     "jd.com",
     "yangkeduo.com",
     "pinduoduo.com",
+    "ebay.com",
+    "etsy.com",
+    "walmart.com",
+    "bestbuy.com",
+    "newegg.com",
+    "vip.com",
+    "suning.com",
+    "1688.com",
 }
 EXTERNAL_DISCOVERY_BRANDS = {
     "taobao.com": "淘宝 taobao",
@@ -206,6 +225,14 @@ EXTERNAL_DISCOVERY_BRANDS = {
     "36kr.com": "36kr",
     "jd.com": "京东",
     "yangkeduo.com": "拼多多",
+    "ebay.com": "ebay",
+    "etsy.com": "etsy",
+    "walmart.com": "walmart",
+    "bestbuy.com": "best buy",
+    "newegg.com": "newegg",
+    "vip.com": "唯品会 vip",
+    "suning.com": "苏宁 suning",
+    "1688.com": "1688 阿里巴巴",
 }
 SITE_FALLBACK_ORDER = {
     "xiaohongshu.com": ("external", "domain", "browser"),
@@ -232,6 +259,8 @@ SITE_FALLBACK_ORDER = {
     "jd.com": ("domain", "external", "browser"),
     "yangkeduo.com": ("domain", "external", "browser"),
     "pinduoduo.com": ("domain", "external", "browser"),
+    "etsy.com": ("external", "domain", "browser"),
+    "bestbuy.com": ("external", "domain", "browser"),
 }
 YTDLP_SUPPORTED_ROOTS = {
     "bilibili.com",
@@ -1057,6 +1086,16 @@ def is_homepage_like(url: str) -> bool:
     return path in {"search", "search_result", "results", "all", "blog", "models"}
 
 
+def should_skip_commerce_homepage_fetch(url: str, query: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    return (
+        root in COMMERCE_ROOTS
+        and is_homepage_like(url)
+        and not is_actionable_non_product_query(query)
+    )
+
+
 def is_generic_commerce_channel_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(url)
     domain = parsed.netloc.lower()
@@ -1121,18 +1160,20 @@ def extract_meta_refresh_target(raw: str, base_url: str) -> str:
 def fetch_with_reader_fallback(url: str) -> Tuple[str, str]:
     domain = urllib.parse.urlparse(url).netloc.lower()
     prefer_reader = domain in READER_FIRST_DOMAINS
+    reader_timeout = 8 if prefer_reader else 12
+    direct_timeout = 8 if prefer_reader else 12
     if prefer_reader:
         reader_url = f"https://r.jina.ai/http://{url.removeprefix('https://').removeprefix('http://')}"
         try:
-            return http_get(reader_url), "reader"
+            return http_get(reader_url, timeout=reader_timeout), "reader"
         except Exception:
             pass
     try:
-        raw = http_get(url)
+        raw = http_get(url, timeout=direct_timeout)
         refresh_target = extract_meta_refresh_target(raw, url)
         if refresh_target and refresh_target != url:
             try:
-                return http_get(refresh_target), "direct_refresh"
+                return http_get(refresh_target, timeout=direct_timeout), "direct_refresh"
             except Exception:
                 pass
         return raw, "direct"
@@ -1140,7 +1181,7 @@ def fetch_with_reader_fallback(url: str) -> Tuple[str, str]:
         pass
     reader_url = f"https://r.jina.ai/http://{url.removeprefix('https://').removeprefix('http://')}"
     try:
-        return http_get(reader_url), "reader"
+        return http_get(reader_url, timeout=reader_timeout), "reader"
     except Exception:
         return "", "unavailable"
 
@@ -1194,6 +1235,9 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
         return True
     if domain in {"taobao.com", "tmall.com"}:
         if "jiantiseos.taobao.com" in raw[:6000] or "_____tmd_____/punish" in raw[:6000] or "x5secdata=" in raw[:6000]:
+            return True
+    if domain == "aliexpress.com":
+        if "_____tmd_____/punish" in raw[:6000] or "x5secdata=" in raw[:6000]:
             return True
     if domain == "douyin.com":
         if re.search(r"<body>\s*</body>", raw[:5000], flags=re.I | re.S):
@@ -3630,6 +3674,10 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         )
     if special:
         return special
+    if should_skip_commerce_homepage_fetch(url, query):
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback, follow_depth=False)
+        if fallback_result:
+            return with_rules(fallback_result, "commerce_homepage_skip")
     domain = parsed.netloc.lower()
     raw, mode = fetch_with_reader_fallback(url)
     if not raw:
@@ -3712,11 +3760,19 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
             quality = "medium" if summary else quality
         except Exception:
             pass
+    commerce_root = root_domain(domain)
+    commerce_homepage_miss = (
+        commerce_root in COMMERCE_ROOTS
+        and is_homepage_like(url)
+        and query_overlap_score(summary_source, query) < 1
+        and not has_commerce_content_signal(summary)
+    )
     if (
         is_low_signal_text(summary_source)
         or not summary
         or (len(summary) <= 1 and looks_like_search_shell(parser.title, parser.sections, parser.links))
         or looks_like_generic_site_blurb(parser.title, summary, query)
+        or commerce_homepage_miss
     ):
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:

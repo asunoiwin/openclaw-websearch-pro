@@ -752,6 +752,79 @@ def extract_commerce_media_links(raw: str, base_url: str) -> List[Dict[str, str]
     return links
 
 
+def extract_content_media_links(raw: str, base_url: str) -> List[Dict[str, str]]:
+    links: List[Dict[str, str]] = []
+    seen = set()
+    candidates: List[str] = []
+    for key in ("og:image", "twitter:image"):
+        value = extract_meta_value(raw, (key,))
+        if value:
+            candidates.append(value)
+    for pattern in (
+        r'<img[^>]+(?:src|data-src|data-original)=["\'](https?://[^"\']+)["\']',
+        r'<img[^>]+(?:src|data-src|data-original)=["\'](//[^"\']+)["\']',
+    ):
+        for match in re.finditer(pattern, raw, re.I):
+            candidates.append(match.group(1))
+    for candidate in candidates:
+        href = urllib.parse.urljoin(base_url, clean(candidate))
+        if not href.startswith("http") or href.startswith("data:"):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        links.append({"text": "image", "href": href})
+        if len(links) >= 4:
+            break
+    return links
+
+
+def extract_content_detail_blocks(title: str, paragraphs: List[str], bullets: List[str], query: str, url: str) -> List[str]:
+    blocks: List[str] = []
+    seen = set()
+    root = root_domain(urllib.parse.urlparse(url).netloc.lower())
+    detail_url = is_content_detail_url(url)
+    noise_tokens = (
+        "登录后",
+        "扫码登录",
+        "打开app",
+        "app下载",
+        "继续阅读",
+        "试读已结束",
+        "vip",
+        "会员",
+        "盐选",
+        "关注后可见",
+        "发贴 登录 首页 我的",
+        "百度贴吧",
+        "页面不存在",
+        "404",
+        "没有知识存在的荒原",
+    )
+    for candidate in paragraphs[:30] + bullets[:15]:
+        text = clean(candidate)
+        if len(text) < 24 or len(text) > 320:
+            continue
+        lowered = text.lower()
+        if any(token.lower() in lowered for token in noise_tokens):
+            continue
+        if looks_like_access_wall(title, text, url) or looks_like_known_error_shell(title, text, url):
+            continue
+        if looks_like_generic_site_blurb(title, [text], query):
+            continue
+        overlap = query_overlap_score(text, query)
+        content_signal = overlap >= 1 or detail_url or root in {"csdn.net", "zhihu.com", "baidu.com"}
+        if not content_signal:
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        blocks.append(text)
+        if len(blocks) >= 5:
+            break
+    return blocks
+
+
 def extract_commerce_detail_blocks(raw: str) -> List[str]:
     sample = clean(re.sub(r"<[^>]+>", " ", raw or ""))[:12000]
     blocks: List[str] = []
@@ -3908,7 +3981,44 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         or looks_like_generic_site_blurb(parser.title, [parser.meta_description] if parser.meta_description else [], query)
     ):
         return parser_search
-    summary_source = " ".join(([parser.meta_description] if parser.meta_description else []) + parser.paragraphs[:20] + parser.bullets[:20])
+    root = root_domain(domain)
+    content_blocks: List[str] = []
+    content_media_links: List[Dict[str, str]] = []
+    if root in CONTENT_ROOTS or domain in {"tieba.baidu.com", "wenku.baidu.com"}:
+        content_blocks = extract_content_detail_blocks(parser.title, parser.paragraphs, parser.bullets, query, url)
+        if content_blocks:
+            existing = {
+                clean(str(section.get("text", "")))
+                for section in parser.sections
+                if isinstance(section, dict)
+            }
+            for block in reversed(content_blocks):
+                if block not in existing:
+                    parser.sections.insert(0, {"level": "detail", "text": block[:220]})
+            parser.sections = parser.sections[:12]
+        content_media_links = extract_content_media_links(raw, url)
+        if content_media_links:
+            existing_links = {
+                clean(str(link.get("href", "")))
+                for link in parser.links
+                if isinstance(link, dict)
+            }
+            parser.links = content_media_links + [
+                link for link in parser.links
+                if isinstance(link, dict) and clean(str(link.get("href", ""))) not in existing_links
+            ]
+            deduped_links = []
+            seen_hrefs = set()
+            for link in parser.links:
+                if not isinstance(link, dict):
+                    continue
+                href = clean(str(link.get("href", "")))
+                if not href or href in seen_hrefs:
+                    continue
+                seen_hrefs.add(href)
+                deduped_links.append(link)
+            parser.links = deduped_links[:20]
+    summary_source = " ".join(([parser.meta_description] if parser.meta_description else []) + content_blocks + parser.paragraphs[:20] + parser.bullets[:20])
     summary = summarize_text(summary_source, query)
     quality = "high" if summary and (parser.sections or parser.links or parser.meta_description or mode == "reader") else "medium" if summary else "low"
     if (not summary or is_low_signal_text(summary_source)) and DISTILL.exists():

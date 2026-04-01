@@ -293,6 +293,41 @@ def test_browser_session_fallback_accepts_wenku_doc_text():
     assert result["fetch_mode"] == "browser_session"
 
 
+def test_content_detail_blocks_and_media_links_are_extracted():
+    html = """
+    <html>
+      <head>
+        <title>OpenClaw 搜索优化实战 - CSDN博客</title>
+        <meta property="og:image" content="https://img.example.com/cover.png" />
+      </head>
+      <body>
+        <article>
+          <h1>OpenClaw 搜索优化实战</h1>
+          <p>本文记录 OpenClaw 搜索链路的回退、重排和站点适配方案，包含 CSDN、知乎、贴吧和文库的访问墙识别。</p>
+          <p>我们把正文 URL 提升到首页和搜索壳页之前，并对已登录会话做浏览器辅助提取。</p>
+          <p>登录后您可以享受以下权益</p>
+          <img src="https://img.example.com/detail-1.png" />
+        </article>
+      </body>
+    </html>
+    """
+
+    original_fetch = module.fetch_with_reader_fallback
+
+    def fake_fetch(url):
+        return html, "direct"
+
+    module.fetch_with_reader_fallback = fake_fetch
+    try:
+        result = module.deep_extract("https://blog.csdn.net/example/article/details/1", "openclaw 搜索优化")
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+
+    assert result["fetch_mode"] == "direct"
+    assert any(section.get("level") == "detail" for section in result["sections"])
+    assert any(link.get("href") == "https://img.example.com/cover.png" for link in result["links"])
+
+
 def test_yt_dlp_adapter_for_content_page():
     original_run = module.subprocess.run
     original_available = module.yt_dlp_available

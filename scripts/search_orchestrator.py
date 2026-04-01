@@ -1526,6 +1526,33 @@ def extract_douyin_publish_markers(text: str) -> List[str]:
     return results[:3]
 
 
+def keep_douyin_heading(heading: str, title: str, query: str) -> bool:
+    sample = clean(heading)
+    if not sample:
+        return False
+    lowered = sample.lower()
+    generic = {
+        "推荐视频",
+        "为你推荐",
+        "相关推荐",
+        "相关搜索",
+        "热门推荐",
+    }
+    if sample in generic:
+        return False
+    title_tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", clean(title).lower())
+    query_tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", clean(query).lower())
+    heading_tokens = set(re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", lowered))
+    overlap = sum(1 for token in set(title_tokens + query_tokens) if token in heading_tokens)
+    if overlap >= 1:
+        return True
+    if clean(title) and clean(title) in sample:
+        return True
+    if "#" in sample and any(token in lowered for token in query_tokens):
+        return True
+    return False
+
+
 def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | None:
     if not isinstance(payload, dict):
         return None
@@ -1587,7 +1614,7 @@ def build_douyin_profile_result(url: str, query: str, payload: Dict) -> Dict | N
             sections.append({"level": level, "text": stat})
     for heading in payload.get("headings", [])[:5]:
         heading = clean(heading)
-        if heading:
+        if heading and keep_douyin_heading(heading, title, query):
             sections.append({"level": "heading", "text": heading[:160]})
     quality = "high" if body_text and len(summary) >= 2 else "medium"
     return {

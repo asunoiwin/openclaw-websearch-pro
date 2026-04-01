@@ -354,6 +354,11 @@ def test_extract_douyin_publish_markers():
     assert "于20260331发布在抖音" in markers
 
 
+def test_keep_douyin_heading_filters_generic_recommendations():
+    assert module.keep_douyin_heading("推荐视频", "OpenClaw 教程 - 抖音", "OpenClaw") is False
+    assert module.keep_douyin_heading("OpenClaw 教程 #openclaw", "OpenClaw 教程 - 抖音", "OpenClaw") is True
+
+
 def test_build_douyin_profile_result_uses_description_when_body_is_shell():
     payload = {
         "title": "在抖音记录美好生活20260331 - 抖音",
@@ -401,6 +406,24 @@ def test_build_douyin_profile_result_classifies_multiple_stat_sections():
     assert "shares" in levels
     assert "collects" in levels
     assert "plays" in levels
+
+
+def test_build_douyin_profile_result_filters_generic_headings():
+    payload = {
+        "title": "OpenClaw 自动化演示 - 抖音",
+        "description": "于20260401发布在抖音，已经收获了12个喜欢",
+        "text": "OpenClaw 自动化演示",
+        "headings": ["推荐视频", "OpenClaw 自动化教程 #openclaw"],
+    }
+    result = module.build_douyin_profile_result(
+        "https://www.douyin.com/video/demo",
+        "OpenClaw 自动化",
+        payload,
+    )
+    assert result is not None
+    heading_texts = [section["text"] for section in result["sections"] if section["level"] == "heading"]
+    assert "推荐视频" not in heading_texts
+    assert "OpenClaw 自动化教程 #openclaw" in heading_texts
 
 
 def test_mediacrawler_douyin_profile_adapter_uses_persistent_profile():

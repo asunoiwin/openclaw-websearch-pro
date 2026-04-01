@@ -7,5 +7,9 @@ assert.equal(plugin.__private.shouldForceSearch('请帮我查找最新的 clawhu
 assert.equal(plugin.__private.shouldForceSearch('只回复 OK'), false);
 assert.equal(plugin.__private.isInjectionEnabled({ enabled: true, injectBeforePromptBuild: true, proactiveSearch: true }), true);
 assert.equal(plugin.__private.isInjectionEnabled({ injectBeforePromptBuild: false }), false);
+assert.equal(plugin.__private.authSiteFromUrl('https://wenku.baidu.com/view/abc.html'), 'wenku');
+assert.equal(plugin.__private.authSiteFromUrl('https://tieba.baidu.com/p/123'), 'tieba');
+assert.equal(plugin.__private.authSiteFromUrl('https://www.zhihu.com/question/1'), 'zhihu');
+assert.deepEqual(plugin.__private.authSitesFromQuery('请检查知乎和小红书登录状态').sort(), ['xiaohongshu', 'zhihu']);
 
 console.log('search orchestrator smoke test passed');

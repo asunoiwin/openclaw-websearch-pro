@@ -1,8 +1,8 @@
 {
-  "id": "openclaw-search-orchestrator",
-  "name": "OpenClaw Search Orchestrator",
+  "id": "openclaw-websearch-pro",
+  "name": "OpenClaw WebSearch Pro",
   "version": "1.0.0",
-  "description": "Unified multi-engine search, deep extraction, refinement, and proactive search guidance for OpenClaw.",
+  "description": "Unified multi-engine search, auth-aware extraction, login assistance, and proactive search guidance for OpenClaw.",
   "configSchema": {
     "type": "object",
     "properties": {
@@ -19,6 +19,9 @@
         "default": true
       },
       "previewFile": {
+        "type": "string"
+      },
+      "authPreviewFile": {
         "type": "string"
       },
       "defaultIntent": {

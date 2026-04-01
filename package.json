@@ -1,7 +1,7 @@
 {
-  "name": "openclaw-search-orchestrator",
+  "name": "openclaw-websearch-pro",
   "version": "1.0.0",
-  "description": "Unified search orchestration for OpenClaw",
+  "description": "Unified search, auth-aware extraction, and login-assisted web research for OpenClaw",
   "private": true,
   "type": "commonjs",
   "main": "src/index.js",

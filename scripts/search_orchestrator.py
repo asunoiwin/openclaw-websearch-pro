@@ -16,7 +16,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import List, Dict, Tuple
 
-USER_AGENT = "Mozilla/5.0 OpenClaw Search Orchestrator"
+USER_AGENT = "Mozilla/5.0 OpenClaw WebSearch Pro"
 MAX_TEXT = 5000
 ENABLE_BROWSER_FALLBACK = os.environ.get("OPENCLAW_SEARCH_ENABLE_BROWSER_FALLBACK", "").strip() == "1"
 HERE = Path(__file__).resolve().parent

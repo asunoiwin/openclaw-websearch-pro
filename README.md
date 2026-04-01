@@ -1,446 +1,193 @@
-# OpenClaw Search Orchestrator
+# OpenClaw WebSearch Pro
 
-Unified search orchestration for OpenClaw. This plugin consolidates multi-engine web search, site-focused query expansion, deep page extraction, iterative refinement, and proactive search guidance into one production path.
+OpenClaw WebSearch Pro is an OpenClaw extension for multi-engine web search, deep extraction, auth-aware session reuse, and guided login flows.
 
-- Chinese documentation: [README.zh-CN.md](/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/README.zh-CN.md)
+- Chinese documentation: [README.zh-CN.md](/Users/rico/.openclaw/extensions/openclaw-websearch-pro/README.zh-CN.md)
+- Detailed wiki: [docs/WIKI.md](/Users/rico/.openclaw/extensions/openclaw-websearch-pro/docs/WIKI.md)
 
-## What it does
+## What It Does
 
-- Expands one query into multiple search variants
-- Searches across Bing, DuckDuckGo, Google, and Baidu result pages
-- Adds site-focused variants for:
-  - GitHub
-  - ClawHub
-  - Reddit
-  - Xiaohongshu
-  - Douyin
-  - Zhihu
-- Deep-extracts high-value pages instead of stopping at result snippets
-- Falls back to reader mode for JS-heavy or noisy domains
-- Runs one refinement loop when first-pass quality is weak
-- Nudges agents to use search proactively on external-information tasks
-- Bundles browser-bridge and content-distill helpers inside the plugin for portability
-- Includes site-specific extractors for high-value result pages
-- Includes an optional `yt-dlp` content-page adapter for sites such as Bilibili, Douyin, XiaoHongShu, Weibo, X, and Reddit
-- Includes an optional `gallery-dl` adapter for sites such as Weibo and Reddit when a content URL is available
-- Includes a built-in `X/Twitter oEmbed` adapter for public text posts
-- Falls back to domain-scoped re-search when the target page is blocked, challenged, or unusable
+- Expands a query into multiple search variants
+- Searches Bing, DuckDuckGo, Google, and Baidu
+- Follows up with deep extraction instead of stopping at snippets
+- Reruns follow-up search when first-pass quality is weak
+- Detects login walls, access walls, empty shells, and challenge pages
+- Reuses lawful logged-in browser sessions for sites where the user already has access
+- Exposes direct login helpers:
+  - open a login page in the browser
+  - generate a QR PNG for Xiaohongshu login
+- Returns structured output for commerce, social, community, and content sites
 
-## Bundled scripts
-
-The plugin now ships with:
-
-- `scripts/search_orchestrator.py`
-- `scripts/browser_session_bridge.py`
-- `scripts/browser_auth_audit.py`
-- `scripts/web_content_distill.py`
-- `src/site-adapter-policy.json`
-- `docs/mediacrawler-adapter-matrix.md`
-
-This keeps the plugin portable and avoids hidden runtime dependencies on `workspace/scripts`.
-
-## Registered tools
+## Registered Tools
 
 - `search_orchestrator_status`
 - `search_orchestrator_extract`
 - `search_orchestrator_research`
+- `websearch_pro_auth_status`
+- `websearch_pro_login_assist`
 
-## Config
+## Deep-Optimized Sites
 
-Configure under:
+Current deep optimization coverage:
 
-- `plugins.entries.openclaw-search-orchestrator`
+- `GitHub`
+  - README/raw extraction
+- `Xiaohongshu`
+  - `search -> detail`, token resolution, login-aware MCP flow
+- `Douyin`
+  - MediaCrawler-backed detail/profile extraction, comments summary on valid samples
+- `Zhihu`
+  - question/answer/detail preference, gated-content detection, browser-assisted extraction
+- `CSDN`
+  - article/detail preference, error/access-wall detection, cleaner detail extraction
+- `Tieba`
+  - post/forum routing, login-shell detection, browser-assisted extraction
+- `Baidu Wenku`
+  - doc/view detection, access-wall detection, browser-assisted extraction
+- `Weibo`
+  - `gallery-dl` plus fallback
+- `Reddit`
+  - `gallery-dl` / `yt-dlp`
+- `X/Twitter`
+  - `oEmbed`
+- `Bilibili`
+  - search cards + `yt-dlp`
+- `JD / Taobao / Pinduoduo`
+  - commerce detail signals, structured sections, image/media extraction
+- `GitLab`
+  - meta extraction
+- `Product Hunt`
+  - fallback-only strategy
 
-Example:
+## Auth-Aware Workflow
+
+The extension now has explicit auth monitoring.
+
+- `websearch_pro_auth_status`
+  - audits login/session state for supported sites
+  - returns:
+    - `auth_state`
+    - `auth_reason`
+    - cookie/profile artifact paths
+    - whether login is required
+- `websearch_pro_login_assist`
+  - `xiaohongshu`: creates a QR PNG and returns the image path
+  - browser-login sites: opens the login page directly in Safari
+- `search_orchestrator_extract`
+  - automatically attaches auth status for supported sites when extraction hits login-sensitive paths
+- `search_orchestrator_research`
+  - attaches auth status for supported sites found in top results or query intent
+
+The QR workflow is file-based by design. The tool returns an absolute PNG path so desktop chat surfaces can render or forward it directly.
+
+## Supported Login Helpers
+
+- `xiaohongshu`
+  - QR login
+  - stored through the local `xiaohongshu-mcp` service
+- `douyin`
+  - browser login page opening
+  - persistent MediaCrawler profile/cookie artifact inspection
+- `zhihu`
+  - browser login page opening
+- `csdn`
+  - browser login page opening
+- `tieba`
+  - browser login page opening
+- `wenku`
+  - browser login page opening
+- `weibo`
+  - browser login page opening
+- `x`
+  - browser login page opening
+
+## Example Usage
+
+### Deep extract a URL
 
 ```json
 {
-  "plugins": {
-    "entries": {
-      "openclaw-search-orchestrator": {
-        "enabled": true,
-        "config": {
-          "enabled": true,
-          "proactiveSearch": true,
-          "injectBeforePromptBuild": true,
-          "previewFile": "/Users/rico/.openclaw/workspace/.openclaw/search-orchestrator-preview.json",
-          "defaultIntent": "auto",
-          "maxInitialResults": 8,
-          "maxDeepResults": 5,
-          "maxRefineRounds": 2,
-          "skipAgentIds": [
-            "ops-system"
-          ]
-        }
-      }
-    }
-  }
+  "url": "https://www.zhihu.com/question/530454987",
+  "query": "向量检索 重排"
 }
 ```
 
-### Fields
-
-- `enabled`
-  - Master switch.
-- `proactiveSearch`
-  - If true, injects search guidance for likely external-information tasks.
-- `injectBeforePromptBuild`
-  - Enables proactive prompt guidance at `before_prompt_build`.
-- `previewFile`
-  - Stores the latest orchestration preview/result.
-- `defaultIntent`
-  - Default intent when the task does not clearly map to a specialized search path.
-- `maxInitialResults`
-  - Max ranked search hits to keep after aggregation.
-- `maxDeepResults`
-  - Max results to deep-extract.
-- `maxRefineRounds`
-  - How many additional refinement rounds to run when quality is weak.
-- `forceAgentIds`
-  - If present, only these agent ids get proactive search injection.
-- `skipAgentIds`
-  - Agent ids excluded from proactive search injection.
-- `siteProfiles`
-  - Optional override for site-profile groups. The plugin ships with default profiles and does not require this in normal use.
-
-## Proactive behavior
-
-The plugin does not wait for the user to explicitly say “search”. It injects guidance when the prompt looks like an external-information task, such as:
-
-- current facts
-- plugin or skill discovery
-- GitHub / ClawHub lookup
-- social-platform research
-- docs / official-site lookup
-- patent / competitor / market research
-
-It skips obvious no-search prompts such as:
-
-- `只回复 OK`
-- `只返回状态`
-
-## Tool usage pattern
-
-### Research
+### Run research
 
 ```json
 {
-  "query": "安装 clawhub 插件 github 搜索相关 skill",
-  "intent": "plugin_discovery",
+  "query": "爱普生 XP-4100 驱动 安装 教程",
+  "intent": "research",
   "max_results": 8,
-  "max_deep_results": 5,
-  "max_refine_rounds": 2
+  "max_deep_results": 5
 }
 ```
 
-### Extract
+### Inspect auth state
 
 ```json
 {
-  "url": "https://github.com/openclaw-ai-opc/openclaw-cn/blob/main/docs/zh-CN/tools/clawhub.md",
-  "query": "clawhub install skill"
+  "sites": ["xiaohongshu", "douyin", "zhihu", "csdn"]
 }
 ```
 
-## Output shape
+### Open login or generate QR
 
-`search_orchestrator_research` returns:
-
-- `query`
-- `intent`
-- `quality`
-- `rounds`
-- `results`
-- `followup_queries`
-
-Each result includes:
-
-- `title`
-- `url`
-- `engine`
-- `query_variant`
-- `site_focus`
-- `snippet`
-- `score`
-- `extraction`
-
-The `extraction` object includes:
-
-- `fetch_mode`
-- `title`
-- `summary`
-- `sections`
-- `links`
-- `quality`
-
-Common `fetch_mode` values now include:
-
-- `github_raw`
-- `reddit_json`
-- `yt_dlp`
-- `gallery_dl`
-- `search_results`
-- `browser_session`
-- `domain_search_fallback`
-- `domain_search_deep_fallback`
-- `external_discovery_fallback`
-- `meta_search_fallback`
-- `reader`
-- `direct`
-
-## Site-specific extraction
-
-The orchestrator does not treat all pages the same.
-
-Current specialized paths include:
-
-- GitHub repository and blob URLs
-  - fetches raw README/blob content directly when possible
-- Reddit discussion URLs
-  - tries structured `.json` extraction first
-  - prefers `gallery-dl + browser cookies` for text-heavy discussion posts
-  - can further use `yt-dlp + browser cookies` on content URLs when direct fetch is blocked
-- Bilibili search pages
-  - extracts video cards directly from the SSR HTML and returns content-page links
-- Weibo status URLs
-  - can use `gallery-dl` to extract structured post metadata from real status pages
-- X / Twitter status URLs
-  - can use official `oEmbed` for public text posts without a browser session
-- GitLab public project / issue pages
-  - prefer in-site meta extraction first, and only fall back when the page is a login wall, challenge page, or private resource
-- Product Hunt product pages
-  - prefer in-site meta extraction first, while search pages still keep domain-deep fallback
-- Taobao / Pinduoduo search pages
-  - now prefer product-card style extraction instead of whole-page summaries
-- Tieba search pages
-  - now prefer a `MediaCrawler` Tieba search adapter first
-  - when MediaCrawler returns no post results, the orchestrator falls back safely to the generic search chain
-- Xiaohongshu / Douyin
-  - Xiaohongshu now supports `xiaohongshu-mcp` detail extraction directly; if the URL does not include `xsec_token`, the orchestrator can use the query to call `/feeds/search`, recover a real `feed_id + xsecToken`, and then fetch detail automatically
-- Xiaohongshu runtime blockers
-  - `xhs_adapter_bootstrap_blocked`: local Go service is still blocked in dependency bootstrap and has not become healthy yet
-  - `xhs_adapter_login_required`: local service is up but the account is not logged in
-- Douyin runtime blockers
-  - `mediacrawler_douyin_profile`: preferred path; reuse MediaCrawler's persistent logged-in browser profile and extract detail text/metadata from the real video page DOM
-  - `douyin_cookie_file_missing`: MediaCrawler path is available but no explicit Douyin cookie file was provided
-  - `douyin_mediacrawler_probe_failed`: cookie-based MediaCrawler detail path was attempted but did not return usable detail content
-  - when in-site pages are shells, error pages, or unreadable JS apps, external discovery now biases toward `GitHub / skill / MCP / tutorial / automation` results instead of generic platform blurbs
-- Search result pages
-  - Google
-  - Baidu
-  - YouTube
-  - PyPI
-  - Hugging Face
-  - Kubernetes Docs search
-
-When a target page is blocked or degraded, the orchestrator can synthesize a usable extraction by re-searching the same query with a domain restriction and converting the best results into structured evidence.
-
-## MediaCrawler adapter matrix
-
-`MediaCrawler` is not the universal default for every site. The local comparison is:
-
-- Xiaohongshu
-  - Keep `xiaohongshu-mcp` as primary.
-  - Reason: it already supports `search -> detail`, auto-resolves missing `xsec_token`, and returns richer note/comment payloads in the current environment.
-- Douyin
-  - Use `MediaCrawler` as primary.
-  - Preferred order:
-    - persistent logged-in profile DOM extraction
-    - cookie-based detail
-    - external discovery fallback
-  - Reason: the persistent profile path now returns usable title/description from real video pages on this machine, while cookie detail remains a secondary fallback.
-- Weibo
-  - Keep `gallery-dl` as primary.
-  - Reason: state-page extraction is already simpler and more stable than switching to a new stack.
-- Bilibili
-  - Keep `yt-dlp` as primary.
-  - Reason: video detail extraction is already stable and lighter than migrating to `MediaCrawler`.
-- Zhihu
-  - Keep `domain_search_deep_fallback` as primary for now.
-  - Reason: the current main path already follows search results into real detail pages.
-  - `MediaCrawler` has been verified to fetch search results and comments after QR login on this machine, but the login state cannot yet be reused headlessly in a stable unattended flow.
-- Tieba
-  - Use `MediaCrawler` search as primary.
-  - Reason: it already fits Tieba's search-oriented workflow, and the orchestrator can fall back cleanly when no posts are returned.
-- GitLab
-  - Use in-site meta extraction as primary for public pages.
-  - Reason: public project and issue pages expose enough title/description metadata without forcing browser login.
-- Product Hunt
-  - Keep in-site meta extraction as the only direct path for public product pages.
-  - Reason: public pages frequently return challenge shells or empty browser DOM on this machine, so exact post detail is not treated as a stable direct-extraction target.
-- Reddit / X / GitHub / ecommerce sites
-  - Do not force `MediaCrawler`.
-  - Reason: it does not cover those sites, and the current adapters are a better fit.
-
-See:
-
-- `docs/mediacrawler-adapter-matrix.md`
-
-## Browser session fallback
-
-This path is now disabled by default.
-
-Reason:
-
-- repeated page-open audits can disturb real logged-in sessions
-- some platforms treat repeated tab opens as abnormal behavior
-- the orchestrator now prefers `direct`, `reader`, `domain_search_fallback`, `external_discovery_fallback`, and `yt_dlp` before touching the browser
-
-Enable it only when you explicitly want browser-driven extraction:
-
-- `OPENCLAW_SEARCH_ENABLE_BROWSER_FALLBACK=1`
-
-When a target site is blocked by login walls, bot challenges, or heavy client rendering, the orchestrator can reuse the local Safari session and extract the page the user actually sees.
-
-This path is intended for sites such as:
-
-- Taobao / Tmall
-- Zhihu
-- Xiaohongshu
-- Douyin
-- Bilibili
-- Weibo
-- X
-- Reddit
-- Product Hunt
-- GitLab
-
-The fallback is not a blind browser read. It:
-
-1. opens the target page in local Safari
-2. extracts title, URL, DOM text, headings, and links
-3. if the page is a search result page, builds query-aligned snippets instead of summarizing navigation chrome
-4. rejects mismatched pages, login shells, and challenge pages rather than falsely marking them as useful hits
-
-Note:
-
-- Product Hunt browser pages currently open, but the DOM remains empty on this machine. The orchestrator therefore treats Product Hunt as a `meta + fallback` site rather than a browser-detail site.
-
-Before that fallback is trusted, the orchestrator also performs a browser auth audit:
-
-1. verify the browser is running
-2. verify the current session is not expired
-3. verify the opened page stayed on the expected domain
-4. reject login shells, control pages, and low-signal browser content
-
-Only after this audit passes does the browser result count as a valid extraction source.
-
-### Batch browser auth audit
-
-The plugin also ships with a batch audit helper:
-
-- `scripts/browser_auth_audit.py`
-
-Default site list:
-
-- `data/browser_auth_sites.json`
-
-Usage:
-
-```bash
-python3 scripts/browser_auth_audit.py data/browser_auth_sites.json
+```json
+{
+  "site": "xiaohongshu"
+}
 ```
 
-It reports, per site:
+## Installation
 
-- browser
-- requested URL
-- auth state
-- auth reason
-- and, for Safari, extracted content when available
+1. Put this project under:
+   - `/Users/rico/.openclaw/extensions/openclaw-websearch-pro`
+2. Allow it in OpenClaw plugin config:
+   - plugin id: `openclaw-websearch-pro`
+3. Recommended preview files:
+   - `/Users/rico/.openclaw/workspace/.openclaw/websearch-pro-preview.json`
+   - `/Users/rico/.openclaw/workspace/.openclaw/websearch-pro-auth-preview.json`
 
-### Temporary window cleanup rule
+## Base Projects Used
 
-Browser testing now follows a strict cleanup rule:
+This project is built on top of a mixed adapter stack:
 
-1. reuse the current browser window when possible
-2. open a temporary test tab inside that window instead of spawning more windows
-3. extract what is needed
-4. close that temporary tab immediately after the audit
+- [MediaCrawler](https://github.com/NanmiCoder/MediaCrawler)
+  - social platform extraction and profile/cookie-backed flows
+- `xiaohongshu-mcp`
+  - local Xiaohongshu service and QR login flow
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
+  - content page extraction
+- [gallery-dl](https://github.com/mikf/gallery-dl)
+  - Reddit / Weibo extraction
 
-Command:
+Plus OpenClaw-native layers:
+
+- multi-engine search orchestration
+- content fallback ranking
+- browser session bridge
+- auth-state detection
+
+## Compliance Boundary
+
+This extension does not integrate tools whose primary purpose is bypassing paywalls, member-only access, anti-copy controls, or private content restrictions.
+
+It does:
+
+- detect access walls
+- reuse user-authorized sessions
+- extract content already visible to the user
+
+It does not:
+
+- bypass paid content
+- bypass VIP/member-only resources
+- bypass follow-to-view restrictions
+
+## Testing
 
 ```bash
-python3 scripts/browser_session_bridge.py close-front safari
+cd /Users/rico/.openclaw/extensions/openclaw-websearch-pro
+npm test
 ```
-
-The `audit` command already performs this cleanup automatically.
-
-## Site adapter policy
-
-The plugin now ships a site adapter policy file:
-
-- `src/site-adapter-policy.json`
-
-This file defines which sites should:
-
-- keep using generic fallback
-- move to a custom extractor
-- or later integrate a dedicated Python project from GitHub
-
-Current direction:
-
-- `taobao.com`
-  - custom search-result extraction preferred
-- `jd.com`
-  - domain fallback first, custom extractor later
-- `xiaohongshu.com / douyin.com / weibo.com`
-  - external discovery first, custom adapter later
-- `reddit.com`
-  - search fallback first, JSON path for posts
-- `gitlab.com`
-  - external fallback until authenticated extraction is stable
-
-## External discovery fallback
-
-When the target site's own search page is completely blocked and site-scoped re-search still cannot recover useful results, the orchestrator falls back to site-semantic external discovery:
-
-1. infer a site brand such as `x twitter`, `gitlab`, `36kr`, `京东`, or `拼多多`
-2. combine that brand with the query and site-specific suffixes
-3. re-run general web search on Bing / DuckDuckGo
-4. return usable results for that site context instead of an empty or challenge-only response
-
-## Common failure patterns and recovery rules
-
-The current search stack now treats several failure modes as generic patterns rather than one-off site hacks:
-
-1. Search-shell pages
-   - The page title looks like search results, but the body is mostly navigation or a thin shell.
-   - Recovery:
-     - prefer `search_results` extraction
-     - or fall back to domain-scoped re-search
-
-2. Challenge / verification / anti-bot pages
-   - Common signals:
-     - `Client Challenge`
-     - `Just a moment`
-     - `Please enable JavaScript`
-     - `403`
-     - security verification copy
-   - Recovery:
-     - downgrade immediately
-     - switch to `domain_search_fallback` or `meta_search_fallback`
-
-3. Overly strict subdomain filtering
-   - Example:
-     - content is indexed under the root domain, but the original URL uses `s.`, `m.`, or `search.` subdomains
-   - Recovery:
-     - relax matching to the root domain
-
-4. JS-heavy pages with unusable DOM
-   - Recovery:
-     - `reader -> distill`
-     - if still weak, re-search using the domain
-
-5. Generic site-description false positives
-   - The page belongs to the target site, but the extracted body is only a generic platform description.
-   - Recovery:
-     - treat as weak
-     - re-search by domain instead of trusting the page body
-
-## Design notes
-
-- This plugin is the primary search path. It is intended to replace ad-hoc script selection at the task level.
-- Existing modules can delegate into this plugin instead of maintaining their own search heuristics.
-- The plugin is optimized for “search -> extract -> refine -> summarize”, not just “search -> stop”.
-- `workspace/scripts/web-search.sh` and `workspace/scripts/web-search-structured.sh` remain only as compatibility shims and now delegate into this plugin.

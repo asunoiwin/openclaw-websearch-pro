@@ -2069,7 +2069,7 @@ def test_browser_auth_audit_rejects_expired_session():
 
 def test_browser_bridge_detects_csdn_missing_page():
     import importlib.util
-    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    path = str(ROOT / "scripts" / "browser_session_bridge.py")
     spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
     bridge = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -2085,7 +2085,7 @@ def test_browser_bridge_detects_csdn_missing_page():
 
 def test_browser_bridge_detects_zhihu_missing_page():
     import importlib.util
-    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    path = str(ROOT / "scripts" / "browser_session_bridge.py")
     spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
     bridge = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -2101,7 +2101,7 @@ def test_browser_bridge_detects_zhihu_missing_page():
 
 def test_browser_bridge_detects_tieba_login_shell():
     import importlib.util
-    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    path = str(ROOT / "scripts" / "browser_session_bridge.py")
     spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
     bridge = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -2117,7 +2117,7 @@ def test_browser_bridge_detects_tieba_login_shell():
 
 def test_browser_bridge_detects_wenku_access_wall():
     import importlib.util
-    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    path = str(ROOT / "scripts" / "browser_session_bridge.py")
     spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
     bridge = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -2129,6 +2129,22 @@ def test_browser_bridge_detects_wenku_access_wall():
     )
     assert result["auth_state"] == "expired"
     assert result["auth_reason"] == "wenku_access_wall"
+
+
+def test_browser_bridge_detects_baidu_security_verify():
+    import importlib.util
+    path = str(ROOT / "scripts" / "browser_session_bridge.py")
+    spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
+    bridge = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(bridge)
+    result = bridge.detect_auth_state(
+        "https://wenku.baidu.com/view/abc.html",
+        "百度安全验证",
+        "请完成验证后继续访问",
+    )
+    assert result["auth_state"] == "expired"
+    assert result["auth_reason"] == "baidu_security_verify"
 
 
 def test_generic_search_shell_extraction_from_sections():

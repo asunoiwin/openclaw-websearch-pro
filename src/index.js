@@ -7,7 +7,22 @@ const DEFAULT_POLICY = require('./default-policy.json');
 
 const HOME = os.homedir();
 const SCRIPT = path.join(__dirname, '..', 'scripts', 'search_orchestrator.py');
-const DEFAULT_PREVIEW = path.join(HOME, '.openclaw', 'workspace', '.openclaw', 'search-orchestrator-preview.json');
+const AUTH_SCRIPT = path.join(__dirname, '..', 'scripts', 'auth_workflow.py');
+const DEFAULT_PREVIEW = path.join(HOME, '.openclaw', 'workspace', '.openclaw', 'websearch-pro-preview.json');
+const DEFAULT_AUTH_PREVIEW = path.join(HOME, '.openclaw', 'workspace', '.openclaw', 'websearch-pro-auth-preview.json');
+const AUTH_SITES = new Set(['xiaohongshu', 'douyin', 'zhihu', 'csdn', 'tieba', 'wenku', 'weibo', 'x']);
+const DOMAIN_TO_AUTH_SITE = new Map([
+  ['xiaohongshu.com', 'xiaohongshu'],
+  ['douyin.com', 'douyin'],
+  ['zhihu.com', 'zhihu'],
+  ['csdn.net', 'csdn'],
+  ['baidu.com', 'tieba'],
+  ['wenku.baidu.com', 'wenku'],
+  ['tieba.baidu.com', 'tieba'],
+  ['weibo.com', 'weibo'],
+  ['x.com', 'x'],
+  ['twitter.com', 'x'],
+]);
 
 function ensureDir(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -40,6 +55,87 @@ function execJson(args) {
       }
     });
   });
+}
+
+function execAuthJson(args) {
+  return new Promise((resolve, reject) => {
+    execFile('python3', [AUTH_SCRIPT, ...args], { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(stderr || stdout || error.message));
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch (parseError) {
+        reject(new Error(`invalid_json:${parseError.message}`));
+      }
+    });
+  });
+}
+
+function rootDomain(host) {
+  const value = String(host || '').toLowerCase().trim();
+  if (!value) return '';
+  const parts = value.split('.').filter(Boolean);
+  if (parts.length <= 2) return value;
+  return parts.slice(-2).join('.');
+}
+
+function authSiteFromUrl(url) {
+  try {
+    const parsed = new URL(String(url || ''));
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'wenku.baidu.com') return 'wenku';
+    if (host === 'tieba.baidu.com') return 'tieba';
+    const root = rootDomain(host);
+    return DOMAIN_TO_AUTH_SITE.get(host) || DOMAIN_TO_AUTH_SITE.get(root) || '';
+  } catch {
+    return '';
+  }
+}
+
+function authSitesFromQuery(query) {
+  const text = String(query || '').toLowerCase();
+  const sites = new Set();
+  if (/小红书|xhs|rednote/.test(text)) sites.add('xiaohongshu');
+  if (/抖音|douyin/.test(text)) sites.add('douyin');
+  if (/知乎|zhihu/.test(text)) sites.add('zhihu');
+  if (/csdn/.test(text)) sites.add('csdn');
+  if (/贴吧|tieba/.test(text)) sites.add('tieba');
+  if (/文库|wenku/.test(text)) sites.add('wenku');
+  if (/微博|weibo/.test(text)) sites.add('weibo');
+  if (/\bx\b|twitter/.test(text)) sites.add('x');
+  return [...sites];
+}
+
+function authSitesFromResearch(result = {}) {
+  const sites = new Set();
+  for (const item of result.results || []) {
+    const extraction = item?.extraction || {};
+    const site = authSiteFromUrl(extraction.url || item?.url || '');
+    if (site) sites.add(site);
+  }
+  for (const site of authSitesFromQuery(result.query || '')) sites.add(site);
+  return [...sites].slice(0, 6);
+}
+
+function needsAuthReminder(result = {}) {
+  const rules = new Set(result.applied_rules || []);
+  if (rules.has('access_wall') || rules.has('browser_auth_audit')) return true;
+  for (const rule of rules) {
+    if (/login_required|cookie_file_missing|probe_failed|persistent_profile_login|cookie_file_login|bootstrap_blocked|service_unavailable/i.test(String(rule))) {
+      return true;
+    }
+  }
+  return Boolean(authSiteFromUrl(result.url || ''));
+}
+
+async function attachAuthStatus(sites = [], previewFile = DEFAULT_AUTH_PREVIEW) {
+  const normalized = [...new Set((sites || []).filter((site) => AUTH_SITES.has(site)))];
+  if (!normalized.length) return null;
+  const result = await execAuthJson(['status', JSON.stringify({ sites: normalized })]);
+  writeJson(previewFile, result);
+  return result;
 }
 
 function resolveEventAgentId(event, ctx) {
@@ -117,7 +213,7 @@ function shouldSkipAgent(agentId, pluginConfig = {}) {
 
 const plugin = {
   register(api) {
-    api.logger.info?.('[openclaw-search-orchestrator] plugin registered');
+    api.logger.info?.('[openclaw-websearch-pro] plugin registered');
 
     api.registerTool({
       name: 'search_orchestrator_status',
@@ -125,10 +221,54 @@ const plugin = {
       description: 'Inspect the latest search orchestration preview.',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => {
-        const details = readJson((api.pluginConfig || {}).previewFile || DEFAULT_PREVIEW, null);
+        const cfg = api.pluginConfig || {};
+        const details = readJson(cfg.previewFile || DEFAULT_PREVIEW, null);
+        const auth = readJson(cfg.authPreviewFile || DEFAULT_AUTH_PREVIEW, null);
         return {
-          content: [{ type: 'text', text: details ? `search orchestrator ready: ${details.intent || 'auto'}` : 'search orchestrator ready: no preview yet' }],
-          details: { success: true, details },
+          content: [{ type: 'text', text: details ? `websearch pro ready: ${details.intent || 'auto'}` : 'websearch pro ready: no preview yet' }],
+          details: { success: true, details, auth },
+        };
+      },
+    });
+
+    api.registerTool({
+      name: 'websearch_pro_auth_status',
+      label: 'WebSearch Pro Auth Status',
+      description: 'Inspect login state, session expiry, and cookie/profile artifacts for supported sites.',
+      parameters: {
+        type: 'object',
+        properties: {
+          sites: { type: 'array', items: { type: 'string' } },
+        },
+        required: [],
+      },
+      execute: async (args = {}) => {
+        const sites = Array.isArray(args.sites) && args.sites.length ? args.sites : ['xiaohongshu', 'douyin', 'zhihu', 'csdn', 'tieba', 'wenku'];
+        const result = await attachAuthStatus(sites, (api.pluginConfig || {}).authPreviewFile || DEFAULT_AUTH_PREVIEW);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          details: { success: true, result },
+        };
+      },
+    });
+
+    api.registerTool({
+      name: 'websearch_pro_login_assist',
+      label: 'WebSearch Pro Login Assist',
+      description: 'Open a login page or generate a QR code image for supported sites.',
+      parameters: {
+        type: 'object',
+        properties: {
+          site: { type: 'string' },
+        },
+        required: ['site'],
+      },
+      execute: async (args = {}) => {
+        const result = await execAuthJson(['login', JSON.stringify({ site: String(args.site || '') })]);
+        writeJson((api.pluginConfig || {}).authPreviewFile || DEFAULT_AUTH_PREVIEW, result);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          details: { success: true, result },
         };
       },
     });
@@ -147,6 +287,12 @@ const plugin = {
       },
       execute: async (args = {}) => {
         const result = await execJson(['extract', JSON.stringify({ url: String(args.url || ''), query: String(args.query || '') })]);
+        if (needsAuthReminder(result)) {
+          const site = authSiteFromUrl(result.url || args.url || '');
+          if (site) {
+            result.auth = await attachAuthStatus([site], (api.pluginConfig || {}).authPreviewFile || DEFAULT_AUTH_PREVIEW);
+          }
+        }
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           details: { success: true, result },
@@ -187,6 +333,10 @@ const plugin = {
         };
         const result = await execJson(['research', JSON.stringify(payload)]);
         writeJson(cfg.previewFile || DEFAULT_PREVIEW, result);
+        const authSites = authSitesFromResearch(result);
+        if (authSites.length) {
+          result.auth = await attachAuthStatus(authSites, cfg.authPreviewFile || DEFAULT_AUTH_PREVIEW);
+        }
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           details: { success: true, result },
@@ -222,6 +372,8 @@ plugin.__private = {
   inferIntent,
   isInjectionEnabled,
   shouldSkipAgent,
+  authSiteFromUrl,
+  authSitesFromQuery,
 };
 
 module.exports = plugin;

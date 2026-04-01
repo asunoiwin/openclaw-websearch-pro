@@ -1,483 +1,195 @@
-# OpenClaw Search Orchestrator
+# OpenClaw WebSearch Pro
 
-这是 OpenClaw 的统一搜索编排插件。它把多引擎搜索、站点定向查询、深度提取、结果再搜索、以及主动搜索提示整合到一条生产链里。
+OpenClaw WebSearch Pro 是一个面向 OpenClaw 的统一搜索与提取插件，重点解决多引擎搜索、深度提取、登录态复用、登录过期提醒和登录引导。
 
-- 英文文档：[README.md](/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/README.md)
+- 英文文档：[README.md](/Users/rico/.openclaw/extensions/openclaw-websearch-pro/README.md)
+- 详细 Wiki：[docs/WIKI.zh-CN.md](/Users/rico/.openclaw/extensions/openclaw-websearch-pro/docs/WIKI.zh-CN.md)
 
-## 功能
+## 能力范围
 
-- 一个查询自动扩展出多个搜索变体
-- 搜索 Bing、DuckDuckGo、Google、Baidu 结果页
-- 对这些站点自动补定向查询：
-  - GitHub
-  - ClawHub
-  - Reddit
-  - 小红书
-  - 抖音
-  - 知乎
-- 对高价值结果做深度提取，而不是停在 snippet
-- 对 JS 重、DOM 难取或页面噪声重的站点优先走 reader 提取
-- 首轮结果差时，会做一轮再搜索
-- 在任务开始前，主动提示 agent 使用统一搜索工具，而不是等用户显式说“去搜索”
-- 插件自带浏览器桥和网页蒸馏脚本，不依赖 `workspace/scripts` 才能工作
-- 内置站点专属结果页提取器
-- 内置可选的 `yt-dlp` 二级内容页适配器，优先处理 `Bilibili / Douyin / XiaoHongShu / Weibo / X / Reddit` 这类内容页
-- 内置可选的 `gallery-dl` 内容页适配器，优先处理 `Weibo / Reddit` 这类已有成熟提取器的平台
-- 内置 `X/Twitter oEmbed` 文本帖适配器，优先处理公开文本推文
-- 当目标页被挑战、拦截或质量过低时，会自动做域名限定再搜索并合成结构化结果
-
-## 插件内脚本
-
-以下脚本已经内置在插件内，可随插件一起迁移：
-
-- `scripts/search_orchestrator.py`
-- `scripts/browser_session_bridge.py`
-- `scripts/browser_auth_audit.py`
-- `scripts/web_content_distill.py`
-- `src/site-adapter-policy.json`
-- `docs/mediacrawler-adapter-matrix.md`
-
-这样做的目的：
-
-- 保证插件可移植
-- 避免换机器或其他用户安装时缺失依赖脚本
-- 让旧入口只作为兼容代理，而不是主逻辑承载点
+- 一个查询自动扩展多个搜索变体
+- 搜索 Bing、DuckDuckGo、Google、Baidu
+- 对高价值结果做深度提取，不停在 snippet
+- 首轮结果弱时自动再搜索
+- 识别登录墙、访问墙、空壳页、挑战页、错误页
+- 合法复用用户已经登录且当前可见的浏览器会话
+- 提供直接登录辅助：
+  - 打开登录页
+  - 生成小红书二维码 PNG
+- 针对电商、社媒、内容站输出结构化结果
 
 ## 注册工具
 
 - `search_orchestrator_status`
 - `search_orchestrator_extract`
 - `search_orchestrator_research`
+- `websearch_pro_auth_status`
+- `websearch_pro_login_assist`
 
-## 配置位置
+## 已深度优化的网站
 
-配置写在：
+- `GitHub`
+  - README / raw 直提
+- `小红书`
+  - `search -> detail`
+  - 登录态和二维码登录检测
+- `抖音`
+  - MediaCrawler 资料目录 / detail / comments 摘要链
+- `知乎`
+  - 问题页/回答页优先
+  - 登录墙/盐选/荒原页识别
+- `CSDN`
+  - 文章页优先
+  - 404/访问墙识别
+  - 正文块和图片提取
+- `贴吧`
+  - 帖子页/吧页识别
+  - 登录壳页识别
+- `百度文库`
+  - `/view/` `/share/` 文档页识别
+  - 试读/VIP 墙识别
+- `微博`
+  - `gallery-dl`
+- `Reddit`
+  - `gallery-dl / yt-dlp`
+- `X/Twitter`
+  - `oEmbed`
+- `Bilibili`
+  - 搜索卡片 + `yt-dlp`
+- `京东 / 淘宝 / 拼多多`
+  - 商品详情信号、结构化 sections、图片/媒体提取
+- `GitLab`
+  - meta 提取
+- `Product Hunt`
+  - `meta + fallback-only`
 
-- `plugins.entries.openclaw-search-orchestrator`
+## 登录态检测与提醒
 
-示例：
+插件现在有显式的登录态监控：
+
+- `websearch_pro_auth_status`
+  - 返回：
+    - `auth_state`
+    - `auth_reason`
+    - cookie/profile 文件路径
+    - 是否需要重新登录
+- `websearch_pro_login_assist`
+  - `小红书`：直接生成二维码 PNG，并返回文件路径
+  - 浏览器登录站点：直接在 Safari 打开登录页
+- `search_orchestrator_extract`
+  - 在命中登录敏感站点时，会自动附带该站点的登录状态
+- `search_orchestrator_research`
+  - 会对结果中的敏感站点附带登录状态回收
+
+二维码使用文件返回，不依赖固定 UI。工具会返回绝对 PNG 路径，桌面对话窗口、Web 容器、飞书桥接层都可以直接渲染或转发。
+
+## 目前支持的登录辅助
+
+- `xiaohongshu`
+  - 二维码登录
+- `douyin`
+  - 浏览器登录页打开
+  - 持久化 profile / cookie 文件状态检查
+- `zhihu`
+  - 浏览器登录页打开
+- `csdn`
+  - 浏览器登录页打开
+- `tieba`
+  - 浏览器登录页打开
+- `wenku`
+  - 浏览器登录页打开
+- `weibo`
+  - 浏览器登录页打开
+- `x`
+  - 浏览器登录页打开
+
+## 使用示例
+
+### 深提取页面
 
 ```json
 {
-  "plugins": {
-    "entries": {
-      "openclaw-search-orchestrator": {
-        "enabled": true,
-        "config": {
-          "enabled": true,
-          "proactiveSearch": true,
-          "injectBeforePromptBuild": true,
-          "previewFile": "/Users/rico/.openclaw/workspace/.openclaw/search-orchestrator-preview.json",
-          "defaultIntent": "auto",
-          "maxInitialResults": 8,
-          "maxDeepResults": 5,
-          "maxRefineRounds": 2,
-          "skipAgentIds": [
-            "ops-system"
-          ]
-        }
-      }
-    }
-  }
+  "url": "https://www.zhihu.com/question/530454987",
+  "query": "向量检索 重排"
 }
 ```
 
-## 配置项说明
-
-- `enabled`
-  - 总开关。
-- `proactiveSearch`
-  - 为 `true` 时，外部信息任务会在 `before_prompt_build` 阶段收到主动搜索提示。
-- `injectBeforePromptBuild`
-  - 是否启用搜索提示注入。
-- `previewFile`
-  - 保存最近一次搜索编排预览或结果。
-- `defaultIntent`
-  - 没有明显任务类型时的默认意图。
-- `maxInitialResults`
-  - 聚合和重排后最多保留多少条候选结果。
-- `maxDeepResults`
-  - 最多对多少条结果做深度提取。
-- `maxRefineRounds`
-  - 首轮质量差时，最多继续做几轮再搜索。
-- `forceAgentIds`
-  - 如果设置了，只对这些 agent 注入主动搜索提示。
-- `skipAgentIds`
-  - 这些 agent 不做主动搜索注入。
-- `siteProfiles`
-  - 覆盖默认站点分组。一般不需要改，插件内已有默认值。
-
-## 主动搜索触发规则
-
-这条插件不会等用户明确说“去搜索”。当任务明显属于外部信息任务时，会主动要求 agent 先用统一搜索工具。
-
-典型触发场景：
-
-- 查最新信息
-- 找 GitHub / ClawHub / plugin / skill
-- 查官网、文档、资料
-- 做专利、竞品、商品、平台内容调研
-- 查小红书、抖音、知乎、Reddit 等平台内容
-
-典型不触发场景：
-
-- `只回复 OK`
-- `只返回状态`
-
-## 推荐调用方式
-
-### 统一调研
+### 执行统一搜索调研
 
 ```json
 {
-  "query": "安装 clawhub 插件 github 搜索相关 skill",
-  "intent": "plugin_discovery",
+  "query": "爱普生 XP-4100 驱动 安装 教程",
+  "intent": "research",
   "max_results": 8,
-  "max_deep_results": 5,
-  "max_refine_rounds": 2
+  "max_deep_results": 5
 }
 ```
 
-### 深度提取单页
+### 检查登录状态
 
 ```json
 {
-  "url": "https://github.com/openclaw-ai-opc/openclaw-cn/blob/main/docs/zh-CN/tools/clawhub.md",
-  "query": "clawhub install skill"
+  "sites": ["xiaohongshu", "douyin", "zhihu", "csdn"]
 }
 ```
 
-## 输出结构
+### 打开登录页或生成二维码
 
-`search_orchestrator_research` 会返回：
-
-- `query`
-- `intent`
-- `quality`
-- `rounds`
-- `results`
-- `followup_queries`
-
-其中每条 `result` 包含：
-
-- `title`
-- `url`
-- `engine`
-- `query_variant`
-- `site_focus`
-- `snippet`
-- `score`
-- `extraction`
-
-`extraction` 里会包含：
-
-- `fetch_mode`
-- `title`
-- `summary`
-- `sections`
-- `links`
-- `quality`
-
-常见的 `fetch_mode` 现在包括：
-
-- `github_raw`
-- `reddit_json`
-- `search_results`
-- `browser_session`
-- `domain_search_fallback`
-- `domain_search_deep_fallback`
-- `external_discovery_fallback`
-- `meta_search_fallback`
-- `reader`
-- `direct`
-- `yt_dlp`
-- `gallery_dl`
-
-## 站点专属提取
-
-这条搜索器不会把所有网页都当成同一种页面处理。
-
-当前已经有专属路径的包括：
-
-- GitHub 仓库页和 blob 页
-  - 优先抓原始 README / 原始文件内容
-- Reddit 讨论页
-  - 优先尝试 `.json` 结构化提取
-  - 纯讨论帖正文优先走 `gallery-dl + 浏览器 cookies`
-  - 内容页可进一步走 `yt-dlp + 浏览器 cookies` 提取正文和统计信息
-- Bilibili 搜索页
-  - 直接从 SSR HTML 中抽视频卡片和二级视频链接
-- Weibo 状态页
-  - 当命中真实微博状态页时，可通过 `gallery-dl` 提取结构化内容
-- X / Twitter 状态页
-  - 纯文本推文优先走官方 `oEmbed`，不依赖浏览器登录态
-- GitLab 公共项目 / Issue 页
-  - 会优先用站内 meta 提取标题和描述；只有命中登录页、验证页或私有资源时才回退
-- Product Hunt 产品页
-  - 会优先用站内 meta 提取产品标题和简介；搜索页继续保留域内深跟进
-- 淘宝 / 拼多多 搜索页
-  - 现在会优先尝试抽商品卡片样式摘要，而不是直接做整页摘要
-- Tieba 搜索页
-  - 现在会优先走 `MediaCrawler` 的 Tieba 搜索适配器
-  - 当 MediaCrawler 没有拿到帖子结果时，再安全回退到通用搜索链
-- 小红书 / 抖音
-  - 小红书现在已支持 `xiaohongshu-mcp` 直连详情提取；如果 URL 里没有 `xsec_token`，会先用 query 调 `/feeds/search`，拿到真实 `feed_id + xsecToken` 后再自动做 detail
-  - 当站内页是壳层、错页或重 JS 不可读时，外部发现会优先偏向 `GitHub / skill / MCP / 教程 / 自动化` 结果，而不是只返回泛平台介绍
-  - `xhs_adapter_bootstrap_blocked` 表示本地小红书 Go 服务还卡在依赖启动阶段，尚未进入可用状态
-  - `xhs_adapter_login_required` 表示本地小红书服务已经起来，但账号未登录
-  - `mediacrawler_douyin_profile` 表示优先复用 MediaCrawler 已登录的持久化浏览器资料目录，直接从真实视频页 DOM 提取标题、描述和正文片段
-  - `douyin_cookie_file_missing` 表示 MediaCrawler 抖音路径已经可用，但没有提供显式的抖音 cookie 文件
-  - `douyin_mediacrawler_probe_failed` 表示 MediaCrawler 抖音 cookie-detail 路径已经尝试运行，但没有返回可用正文
-- 搜索结果页
-  - Google
-  - Baidu
-  - YouTube
-  - PyPI
-  - Hugging Face
-  - Kubernetes Docs search
-
-如果目标页本身被验证页、挑战页或半加载页面挡住，搜索器会自动退到：
-
-- 同 query 的域名限定再搜索
-- 再把搜索结果整理成结构化证据
-
-这样即使拿不到原页面 DOM，也不会直接停在低质量结果。
-
-## 浏览器登录态回退
-
-默认情况下，这条路径现在是关闭的。
-
-原因：
-
-- 反复打开站点页会干扰用户真实登录态
-- 某些平台会把高频标签页打开视为异常行为
-- 搜索插件现在优先走：
-  - `direct`
-  - `reader`
-  - `domain_search_fallback`
-  - `external_discovery_fallback`
-  - `yt_dlp`
-
-只有在你显式设置环境变量后，才会重新启用浏览器回退：
-
-- `OPENCLAW_SEARCH_ENABLE_BROWSER_FALLBACK=1`
-
-当网站满足下面条件之一时，搜索器会尝试复用本地 Safari 会话：
-
-- 需要登录后才能看到正文或搜索结果
-- 机器人挑战、验证页、强 JS 渲染导致原始抓取只得到壳页
-- 页面本身是有效搜索页，但真正有用的信息只在浏览器加载后的结果列表里
-
-当前这条路径主要服务于：
-
-- 淘宝 / 天猫
-- 知乎
-- 小红书
-- 抖音
-- Bilibili
-- 微博
-- X
-- Reddit
-- Product Hunt
-- GitLab
-
-补充：
-
-- `Product Hunt` 在本机浏览器里虽然能打开目标 URL，但正文 DOM 仍经常为空，所以搜索器把它归类为 `meta + fallback` 站点，而不是浏览器深提取站点。
-
-在真正走浏览器回退前，搜索器现在会先做一次登录态预审：
-
-1. 检查目标浏览器是否在运行
-2. 检查当前会话是否已过期
-3. 检查打开后是否落到正确域名
-4. 检查当前页是不是登录壳页、控制台页或低信号页
-
-只有预审通过，才会把浏览器结果当成有效信息源。
-
-### 浏览器登录态批量审计
-
-插件内还带了一个批量审计脚本：
-
-- `scripts/browser_auth_audit.py`
-
-默认站点清单：
-
-- `data/browser_auth_sites.json`
-
-用法：
-
-```bash
-python3 scripts/browser_auth_audit.py data/browser_auth_sites.json
+```json
+{
+  "site": "xiaohongshu"
+}
 ```
 
-它会输出每个站点当前的：
+## 安装
 
-- 浏览器
-- 请求 URL
-- 登录态
-- 登录态原因
-- 如果是 Safari，还会附带可提取正文结果
+1. 将项目放到：
+   - `/Users/rico/.openclaw/extensions/openclaw-websearch-pro`
+2. 在 OpenClaw 插件配置里允许：
+   - 插件 id：`openclaw-websearch-pro`
+3. 推荐预览文件：
+   - `/Users/rico/.openclaw/workspace/.openclaw/websearch-pro-preview.json`
+   - `/Users/rico/.openclaw/workspace/.openclaw/websearch-pro-auth-preview.json`
 
-### 测试窗口关闭规则
+## 使用到的基础项目
 
-浏览器测试现在遵循一条强制规则：
+基础适配器来自：
 
-1. 优先复用当前浏览器窗口
-2. 在同一窗口中新增测试标签页，而不是新增多个窗口
-3. 提取结束后自动关闭刚打开的测试标签页
-4. 不再保留一堆临时测试窗口
+- `MediaCrawler`
+  - 社媒搜索和内容提取
+- `xiaohongshu-mcp`
+  - 小红书本地服务与二维码登录
+- `yt-dlp`
+  - 内容页提取
+- `gallery-dl`
+  - Reddit / 微博提取
 
-对应命令：
+OpenClaw 自己提供的层包括：
+
+- 多引擎搜索编排
+- 内容回退排序
+- 浏览器会话桥接
+- 登录态检测与提醒
+
+## 合规边界
+
+这个插件不会接入以绕过付费墙、会员墙、反复制控制、关注后可见限制为目标的工具。
+
+会做的事：
+
+- 识别访问墙
+- 复用用户自己已授权的会话
+- 提取用户当前已经可见的内容
+
+不会做的事：
+
+- 绕过付费内容
+- 绕过会员/VIP 限制
+- 绕过关注后可见限制
+
+## 测试
 
 ```bash
-python3 scripts/browser_session_bridge.py close-front safari
+cd /Users/rico/.openclaw/extensions/openclaw-websearch-pro
+npm test
 ```
-
-默认 `audit` 已经内置自动关闭，不需要额外手动调用。
-
-## 站点适配层策略
-
-插件现在带一个站点适配层策略文件：
-
-- `src/site-adapter-policy.json`
-
-这个文件的作用不是直接执行抓取，而是定义：
-
-- 哪些站点继续走通用回退
-- 哪些站点值得接专属提取器
-- 哪些站点后续适合接 GitHub 上现成的 Python 项目
-
-当前策略大意：
-
-- `taobao.com`
-  - 优先做专属搜索结果提取
-- `jd.com`
-  - 先走域内回退，后续再补专属器
-- `xiaohongshu.com / douyin.com / weibo.com`
-  - 当前优先站外发现，后续再补专属适配器
-- `reddit.com`
-  - 搜索页先回退，帖子页继续优先 JSON
-- `gitlab.com`
-  - 登录稳定前优先站外发现
-
-这条回退不是简单“把浏览器页读一遍”，而是：
-
-1. 用本地 Safari 打开目标页
-2. 读取真实 DOM 文本、标题、链接、标题层级
-3. 如果页面是搜索结果页，优先抽取与 query 强相关的局部片段
-4. 如果拿到的是控制台页、登录壳页、错误域名页，则直接判失败，不把它误算成高质量命中
-
-## MediaCrawler 适配矩阵
-
-插件现在额外维护了一份 `MediaCrawler` 对接矩阵：
-
-- `docs/mediacrawler-adapter-matrix.md`
-
-这份矩阵明确了：
-
-- `MediaCrawler` 原生支持哪些平台
-- 当前哪些站点应该继续保留现有主路径
-- 哪些站点应该优先迁移或继续推进 `MediaCrawler`
-
-当前结论是：
-
-- 小红书：
-  - 继续以 `xiaohongshu-mcp` 为主
-  - 因为现在已经稳定支持 `search -> detail`
-- 抖音：
-  - 优先继续推进 `MediaCrawler`
-  - 因为它更适合作为抖音主适配器
-- 微博：
-  - 继续以 `gallery-dl` 为主
-- Bilibili：
-  - 继续以 `yt-dlp` 为主
-- 知乎：
-  - 当前继续以 `domain_search_deep_fallback` 为主
-  - 原因是当前主路径已经会从搜索结果继续跟进到真实详情页
-  - `MediaCrawler` 在本机上已经验证能通过二维码登录抓到搜索结果和评论，但登录态还不能稳定复用到无人值守的 headless 流程
-- 贴吧：
-  - 当前以 `MediaCrawler` 搜索适配器为主
-  - 原因是它已经能作为站内搜索主路径运行，并在没有帖子结果时安全回退
-- GitLab：
-  - 当前以站内 meta 提取为主，登录/验证失败时再回退到站外发现
-- Product Hunt：
-  - 当前只保留站内 meta 提取作为直提路径
-  - 原因是本机上公开页经常返回 challenge 壳层或空 DOM，不把它当成稳定详情站点
-
-## 站点语义外部发现兜底
-
-当目标站点本身完全不可取，且站内 `site:` 回退仍然拿不到可用结果时，搜索器会进入最后一层兜底：
-
-1. 识别站点品牌词，例如：
-   - `x twitter`
-   - `gitlab`
-   - `36kr`
-   - `京东`
-   - `拼多多`
-2. 把品牌词和 query 以及站点专属补充词拼成新查询
-3. 在 Bing / DuckDuckGo 上重新做通用搜索
-4. 返回与该站点场景强相关的可用结果，而不是空结果
-
-这条路径主要解决：
-
-- 目标站点搜索页只剩 JavaScript/验证提示
-- 目标站点搜索页被 403/反爬完全挡住
-- 电商站点搜索页只能看到平台介绍页、但站外仍能找到相关教程、文档、讨论和替代信息
-
-## 通用失败原因与恢复规则
-
-这次大规模回归后，已经能把常见失败模式归成几类。后续即使遇到未专门适配的网站，也优先按这些规则处理：
-
-1. 搜索结果壳页
-   - 现象：
-     - 标题像 `Search Results`
-     - 页面正文只有导航、站点说明或一条泛摘要
-   - 处理：
-     - 不直接信正文
-     - 改走 `search_results` 结果页抽取
-
-2. 挑战页 / 验证页 / 反爬页
-   - 现象：
-     - `Client Challenge`
-     - `Just a moment`
-     - `安全验证`
-     - `Please enable JavaScript`
-     - `403`
-   - 处理：
-     - 直接降级
-     - 再走 `domain_search_fallback` 或 `meta_search_fallback`
-
-3. 子域名过滤过严
-   - 现象：
-     - 目标页在 `s.xxx.com`、`m.xxx.com`、`search.xxx.com`
-     - 但有效内容落在根域名其他页面
-   - 处理：
-     - 放宽到根域名级别再过滤
-
-4. JS 重页面 / DOM 不可用
-   - 现象：
-     - 页面能打开，但抓不到有效正文
-     - 只有 reader 或 distill 才能拿到内容
-   - 处理：
-     - `reader -> distill`
-     - 再做质量判断
-
-5. 泛站点介绍误判
-   - 现象：
-     - 搜索页明明是目标站点，但正文只剩“这是一个网站/平台”
-   - 处理：
-     - 不把这类内容当命中
-     - 改做域名限定再搜索
-
-## 设计原则
-
-- 这条插件是新的主搜索链，不再依赖“脚本 A 搜一下，脚本 B 再补一下”的散点模式。
-- 目标不是只返回搜索结果，而是：
-  - 搜索
-  - 提取
-  - 判断质量
-  - 需要时再搜索
-  - 最后交给 agent 使用
-
-- 现有模块应该逐步委托给这条统一搜索编排器，而不是继续维护各自独立的搜索逻辑。
-- `workspace/scripts/web-search.sh` 和 `workspace/scripts/web-search-structured.sh` 现在只保留兼容入口，内部已经代理到本插件。

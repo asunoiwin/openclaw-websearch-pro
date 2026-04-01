@@ -1306,33 +1306,61 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
     if not cookie_str:
         return None
 
-    stamp = str(int(time.time() * 1000))
-    out_dir = MEDIACRAWLER_OUTPUT_BASE / stamp
+    code = f"""
+import asyncio, json, config
+from playwright.async_api import async_playwright
+from media_platform.douyin.core import DouYinCrawler
+from media_platform.douyin.login import DouYinLogin
+from media_platform.douyin.help import parse_video_info_from_url
+URL = {json.dumps(url)}
+COOKIE = {json.dumps(cookie_str)}
+USER_DATA_DIR = {json.dumps(DOUYIN_MEDIACRAWLER_PROFILE_TEMPLATE)}
+async def main():
+    config.PLATFORM = 'dy'
+    config.LOGIN_TYPE = 'cookie'
+    config.COOKIES = COOKIE
+    config.HEADLESS = True
+    config.ENABLE_CDP_MODE = False
+    config.SAVE_LOGIN_STATE = True
+    config.USER_DATA_DIR = USER_DATA_DIR
+    config.CRAWLER_MAX_SLEEP_SEC = 0
+    config.MAX_CONCURRENCY_NUM = 1
+    config.ENABLE_GET_SUB_COMMENTS = False
+    crawler = DouYinCrawler()
+    async with async_playwright() as playwright:
+        chromium = playwright.chromium
+        crawler.browser_context = await crawler.launch_browser(chromium, None, None, headless=True)
+        await crawler.browser_context.add_init_script(path='libs/stealth.min.js')
+        crawler.context_page = await crawler.browser_context.new_page()
+        await crawler.context_page.goto(crawler.index_url)
+        crawler.dy_client = await crawler.create_douyin_client(None)
+        if not await crawler.dy_client.pong(browser_context=crawler.browser_context):
+            login_obj = DouYinLogin(
+                login_type='cookie',
+                login_phone='',
+                browser_context=crawler.browser_context,
+                context_page=crawler.context_page,
+                cookie_str=COOKIE,
+            )
+            await login_obj.begin()
+            await crawler.dy_client.update_cookies(browser_context=crawler.browser_context)
+        aweme_id = parse_video_info_from_url(URL).aweme_id
+        detail = await crawler.dy_client.get_video_by_id(aweme_id)
+        comments = await crawler.dy_client.get_aweme_all_comments(
+            aweme_id=aweme_id,
+            crawl_interval=0,
+            is_fetch_sub_comments=False,
+            callback=None,
+            max_count=10,
+        )
+        print(json.dumps({{'detail': detail, 'comments': comments}}, ensure_ascii=False))
+        await crawler.browser_context.close()
+asyncio.run(main())
+"""
     cmd = [
         str(MEDIACRAWLER_VENV_PYTHON),
-        "main.py",
-        "--platform",
-        "dy",
-        "--lt",
-        "cookie",
-        "--type",
-        "detail",
-        "--specified_id",
-        url,
-        "--cookies",
-        cookie_str,
-        "--headless",
-        "true",
-        "--save_data_option",
-        "json",
-        "--save_data_path",
-        str(out_dir),
-        "--get_comment",
-        "true",
-        "--get_sub_comment",
-        "false",
-        "--max_concurrency_num",
-        "1",
+        "-c",
+        code,
     ]
     try:
         proc = subprocess.run(
@@ -1344,22 +1372,16 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
         )
         if proc.returncode != 0:
             return None
-
-        candidates = sorted((out_dir / "douyin" / "json").glob("detail_contents_*.json"))
-        if not candidates:
-            return None
         try:
-            payload = json.loads(candidates[-1].read_text(encoding="utf-8"))
+            lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+            payload = json.loads(lines[-1]) if lines else None
         except Exception:
             return None
     except subprocess.TimeoutExpired:
         return None
-    finally:
-        shutil.rmtree(out_dir, ignore_errors=True)
-    if isinstance(payload, list):
-        item = payload[-1] if payload else {}
-    else:
-        item = payload
+    detail = payload.get("detail") if isinstance(payload, dict) else None
+    comments = payload.get("comments") if isinstance(payload, dict) else None
+    item = detail if isinstance(detail, dict) else {}
     if not isinstance(item, dict):
         return None
 
@@ -1372,10 +1394,10 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
             stats.append(f"{field}={value}")
     comment_bits = []
     for key in ("comments", "comment_list", "comments_list"):
-        comments = item.get(key)
-        if not isinstance(comments, list):
+        embedded_comments = item.get(key)
+        if not isinstance(embedded_comments, list):
             continue
-        for entry in comments[:3]:
+        for entry in embedded_comments[:3]:
             if not isinstance(entry, dict):
                 continue
             content = clean(
@@ -1387,6 +1409,17 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
                 comment_bits.append(content[:120])
         if comment_bits:
             break
+    if not comment_bits and isinstance(comments, list):
+        for entry in comments[:3]:
+            if not isinstance(entry, dict):
+                continue
+            content = clean(
+                entry.get("content", "")
+                or entry.get("text", "")
+                or entry.get("desc", "")
+            )
+            if content:
+                comment_bits.append(content[:120])
     text = " ".join(part for part in [title, author, " ".join(stats), " ".join(comment_bits)] if part)
     summary = summarize_text(text, query)
     if not summary and title:

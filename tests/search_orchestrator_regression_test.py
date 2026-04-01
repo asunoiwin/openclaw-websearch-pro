@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 import tempfile
@@ -288,15 +289,25 @@ def test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json():
                     self.stderr = ""
 
             def fake_run(cmd, cwd=None, text=True, capture_output=True, timeout=90):
-                assert cmd[cmd.index("--get_comment") + 1] == "true"
-                save_path = Path(cmd[cmd.index("--save_data_path") + 1])
-                target = save_path / "douyin" / "json"
-                target.mkdir(parents=True, exist_ok=True)
-                (target / "detail_contents_2026-03-31.json").write_text(
-                    '[{"title":"OpenClaw 抖音教程","nickname":"AI学长","liked_count":"123","comment_count":"8","cover_url":"https://example.com/c.jpg","comments":[{"content":"这个自动化流程很清楚"},{"content":"部署后速度不错"}]}]',
-                    encoding="utf-8",
+                assert cmd[1] == "-c"
+                proc = FakeProc()
+                proc.stdout = json.dumps(
+                    {
+                        "detail": {
+                            "title": "OpenClaw 抖音教程",
+                            "nickname": "AI学长",
+                            "liked_count": "123",
+                            "comment_count": "8",
+                            "cover_url": "https://example.com/c.jpg",
+                        },
+                        "comments": [
+                            {"text": "这个自动化流程很清楚"},
+                            {"text": "部署后速度不错"},
+                        ],
+                    },
+                    ensure_ascii=False,
                 )
-                return FakeProc()
+                return proc
 
             module.mediacrawler_available = lambda: True
             module.DOUYIN_COOKIE_FILE = cookie_file

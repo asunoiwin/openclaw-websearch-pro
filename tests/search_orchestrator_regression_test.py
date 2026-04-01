@@ -257,6 +257,45 @@ def test_browser_session_fallback_accepts_tieba_post_text():
     assert result["fetch_mode"] == "browser_session"
 
 
+def test_browser_session_extracts_detail_sections_and_images():
+    original_run_json = module.run_json
+
+    def fake_run_json(args, timeout=45):
+        if args[1] != str(module.BRIDGE):
+            raise AssertionError(args)
+        if args[2] == "status" and args[3] == "safari":
+            return {"running": True, "dom_extract": True, "url": "https://blog.csdn.net/example/article/details/1"}
+        if args[2] == "audit" and args[3] == "safari":
+            return {
+                "browser": "safari",
+                "status": {"auth_state": "authenticated", "auth_reason": "csdn_article_page"},
+                "extract": {
+                    "url": "https://blog.csdn.net/example/article/details/1",
+                    "title": "OpenClaw 搜索优化实战 - CSDN博客",
+                    "text": "本文记录 OpenClaw 搜索链路的回退、重排和站点适配方案，包含 CSDN、知乎、贴吧和文库的访问墙识别。我们把正文 URL 提升到首页和搜索壳页之前，并对已登录会话做浏览器辅助提取。",
+                    "headings": [{"tag": "h1", "text": "OpenClaw 搜索优化实战"}],
+                    "links": [{"text": "原文", "href": "https://blog.csdn.net/example/article/details/1"}],
+                    "images": [{"text": "image", "href": "https://img.example.com/detail.png"}],
+                    "auth_state": "authenticated",
+                    "auth_reason": "csdn_article_page",
+                },
+            }
+        if args[2] == "open" and args[3] == "safari":
+            return {"ok": True}
+        raise AssertionError(args)
+
+    module.run_json = fake_run_json
+    try:
+        result = module.browser_assisted_extract("https://blog.csdn.net/example/article/details/1", "openclaw 搜索优化")
+    finally:
+        module.run_json = original_run_json
+
+    assert result is not None
+    assert result["fetch_mode"] == "browser_session"
+    assert any(section.get("level") == "detail" for section in result["sections"])
+    assert any(link.get("href") == "https://img.example.com/detail.png" for link in result["links"])
+
+
 def test_browser_session_fallback_accepts_wenku_doc_text():
     original_run_json = module.run_json
 

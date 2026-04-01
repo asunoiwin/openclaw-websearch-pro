@@ -249,7 +249,8 @@ def safari_extract() -> dict:
         "bodyText=bodyText.split('\\n').join(' ').replace(/\\s+/g,' ').trim().slice(0,4000);"
         "var headings=Array.from(document.querySelectorAll('h1,h2,h3')).slice(0,12).map(function(el){return {tag:el.tagName.toLowerCase(),text:(el.innerText||'').trim()};});"
         "var links=Array.from(document.querySelectorAll('a[href]')).slice(0,20).map(function(a){return {text:(a.innerText||'').trim(),href:a.href};});"
-        "return {title:document.title||'',url:location.href,text:bodyText,headings:headings,links:links};"
+        "var images=Array.from(document.querySelectorAll('img')).slice(0,8).map(function(img){return {text:'image',href:(img.currentSrc||img.src||'')};}).filter(function(item){return item.href;});"
+        "return {title:document.title||'',url:location.href,text:bodyText,headings:headings,links:links,images:images};"
         "})())"
     )
     script = f'''

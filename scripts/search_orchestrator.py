@@ -2421,13 +2421,38 @@ def browser_assisted_extract(url: str, query: str) -> Dict | None:
         return None
     if query_overlap_score(" ".join(summary), query) < 1:
         return None
+    detail_blocks = extract_content_detail_blocks(title, [text], [], query, payload_url or url)
+    sections = []
+    for block in detail_blocks[:4]:
+        sections.append({"level": "detail", "text": block[:220]})
+    for heading in payload.get("headings", [])[:12]:
+        if isinstance(heading, dict):
+            heading_text = clean(str(heading.get("text", "")))
+            level = clean(str(heading.get("tag", ""))) or "heading"
+        else:
+            heading_text = clean(str(heading))
+            level = "heading"
+        if heading_text:
+            sections.append({"level": level, "text": heading_text[:220]})
+    links = []
+    seen_hrefs = set()
+    for source in (payload.get("images", [])[:8], payload.get("links", [])[:20]):
+        for item in source:
+            if not isinstance(item, dict):
+                continue
+            href = clean(str(item.get("href", "")))
+            if not href or href in seen_hrefs:
+                continue
+            seen_hrefs.add(href)
+            text_label = clean(str(item.get("text", ""))) or "link"
+            links.append({"text": text_label[:120], "href": href})
     return {
         "url": url,
         "fetch_mode": "browser_session",
         "title": title,
         "summary": summary,
-        "sections": payload.get("headings", [])[:12],
-        "links": payload.get("links", [])[:20],
+        "sections": sections[:12],
+        "links": links[:20],
         "quality": "high" if len(summary) >= 2 else "medium",
         "browser": browser,
         "site": site,

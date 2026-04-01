@@ -1217,6 +1217,26 @@ def test_parser_search_results_skip_commerce_shop_links():
     assert "/shop/view_shop" not in result["links"][0]["href"]
 
 
+def test_parser_search_results_uses_commerce_card_sections():
+    parser = type(
+        "Parser",
+        (),
+        {
+            "title": "蓝牙耳机-淘宝",
+            "sections": [],
+            "links": [
+                {"text": "真无线蓝牙耳机 ¥99 2万人付款 官方旗舰店", "href": "https://www.taobao.com/list/item/123456.htm"},
+                {"text": "运动蓝牙耳机 ¥129 5000+人付款", "href": "https://www.taobao.com/list/item/456789.htm"},
+            ],
+        },
+    )()
+    result = module.extract_parser_search_results("https://www.taobao.com/chanpin/demo.html", parser, "蓝牙耳机")
+    assert result is not None
+    levels = [section["level"] for section in result["sections"]]
+    assert "price" in levels
+    assert "sales" in levels
+
+
 def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
     raw = """
     <html><head>
@@ -1281,6 +1301,30 @@ def test_commerce_detail_blocks_skip_script_and_multi_card_noise():
     assert "g_config" not in joined
     assert "20万+人付款" not in joined
     assert "蓝牙5.4低延迟方案" in joined
+
+
+def test_pinduoduo_item_meta_extracts_media_links_and_detail_blocks():
+    raw = """
+    <html><head>
+      <meta property="og:image" content="https://img.example.com/pdd-a.jpg">
+      <title>开放式蓝牙耳机</title>
+      <meta name="description" content="券后￥129 已售1.3万件 官方补贴">
+    </head><body>
+      <img src="https://img.example.com/pdd-b.jpg">
+      采用蓝牙5.4低延迟方案，支持双设备连接和长续航。
+      配备13mm动圈单元，佩戴舒适。
+    </body></html>
+    """
+    result = module.extract_pinduoduo_special(
+        "https://mobile.yangkeduo.com/goods.html?goods_id=123",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["links"]
+    assert result["links"][0]["href"].startswith("https://img.example.com/")
+    levels = [section["level"] for section in result["sections"]]
+    assert "detail" in levels
 
 
 def test_commerce_detail_summary_reads_json_ld_fields():

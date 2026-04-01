@@ -2857,11 +2857,17 @@ def extract_parser_search_results(url: str, parser: "Extractor", query: str) -> 
     sections = []
     for item_title, item_url, item_snippet in items[:5]:
         line = item_title
-        if item_snippet:
+        if commerce_root in COMMERCE_ROOTS:
+            line = format_commerce_line(item_title, item_snippet, item_url)
+        elif item_snippet:
             line = f"{item_title}: {item_snippet[:180]}"
         summary.append(line)
         links.append({"text": item_title, "href": item_url})
-        sections.append({"level": "results", "text": item_title})
+    sections = (
+        extract_commerce_search_card_sections(summary)
+        if commerce_root in COMMERCE_ROOTS else
+        [{"level": "results", "text": item[0]} for item in items[:5]]
+    )
 
     return {
         "url": url,

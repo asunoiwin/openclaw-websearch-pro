@@ -106,17 +106,20 @@ def main() -> int:
     report_md = Path(sys.argv[3])
     timeout = int(sys.argv[4]) if len(sys.argv) > 4 else 25
     cases = json.loads(case_file.read_text())
-    results = [run_case(case, timeout) for case in cases]
+    results: list[dict] = []
+    for case in cases:
+        results.append(run_case(case, timeout))
+        summary = summarize(results)
+        payload = {
+            "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "source": str(case_file),
+            "timeoutSeconds": timeout,
+            "summary": summary,
+            "results": results,
+        }
+        report_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        report_md.write_text(to_markdown(case_file.stem, summary, results))
     summary = summarize(results)
-    payload = {
-        "generatedAt": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "source": str(case_file),
-        "timeoutSeconds": timeout,
-        "summary": summary,
-        "results": results,
-    }
-    report_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
-    report_md.write_text(to_markdown(case_file.stem, summary, results))
     print(json.dumps(summary, ensure_ascii=False))
     return 0
 

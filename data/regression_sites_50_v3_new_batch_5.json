@@ -1,0 +1,52 @@
+[
+  {
+    "site": "eBay",
+    "url": "https://www.ebay.com",
+    "query": "bluetooth earbuds"
+  },
+  {
+    "site": "Etsy",
+    "url": "https://www.etsy.com",
+    "query": "mac mini stand"
+  },
+  {
+    "site": "Walmart",
+    "url": "https://www.walmart.com",
+    "query": "bluetooth earbuds"
+  },
+  {
+    "site": "Best Buy",
+    "url": "https://www.bestbuy.com",
+    "query": "bluetooth earbuds"
+  },
+  {
+    "site": "Newegg",
+    "url": "https://www.newegg.com",
+    "query": "bluetooth earbuds"
+  },
+  {
+    "site": "Vipshop",
+    "url": "https://www.vip.com",
+    "query": "蓝牙耳机"
+  },
+  {
+    "site": "Suning",
+    "url": "https://www.suning.com",
+    "query": "蓝牙耳机"
+  },
+  {
+    "site": "Dangdang",
+    "url": "https://search.dangdang.com",
+    "query": "python 爬虫"
+  },
+  {
+    "site": "Tmall",
+    "url": "https://www.tmall.com",
+    "query": "蓝牙耳机"
+  },
+  {
+    "site": "1688",
+    "url": "https://www.1688.com",
+    "query": "蓝牙耳机"
+  }
+]

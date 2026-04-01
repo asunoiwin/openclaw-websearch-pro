@@ -1237,6 +1237,49 @@ def test_parser_search_results_uses_commerce_card_sections():
     assert "sales" in levels
 
 
+def test_extract_meta_refresh_target():
+    raw = '<html><head><meta http-equiv="refresh" content="0; url=/docs/4.x/getting-started/introduction"></head></html>'
+    target = module.extract_meta_refresh_target(raw, "https://nuxt.com/docs")
+    assert target == "https://nuxt.com/docs/4.x/getting-started/introduction"
+
+
+def test_external_discovery_fallback_for_quora_search_shell():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "How do AI agents orchestrate search effectively? - Quora",
+                "https://www.quora.com/How-do-AI-agents-orchestrate-search-effectively",
+                "discussion answer",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "OpenClaw search orchestration guide",
+                "https://medium.com/example/openclaw-search-orchestration-guide",
+                "guide tutorial",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://www.quora.com/search?q=openclaw",
+            "openclaw 搜索优化",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] == "external_discovery_fallback"
+    assert "quora" in " ".join(result["source_query"]).lower()
+
+
 def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
     raw = """
     <html><head>

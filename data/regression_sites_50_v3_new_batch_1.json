@@ -1,0 +1,52 @@
+[
+  {
+    "site": "React Docs",
+    "url": "https://react.dev",
+    "query": "react useEffectEvent"
+  },
+  {
+    "site": "Vue Docs",
+    "url": "https://vuejs.org",
+    "query": "vue watchEffect"
+  },
+  {
+    "site": "Next.js Docs",
+    "url": "https://nextjs.org/docs",
+    "query": "nextjs app router caching"
+  },
+  {
+    "site": "Nuxt Docs",
+    "url": "https://nuxt.com/docs",
+    "query": "nuxt data fetching"
+  },
+  {
+    "site": "Svelte Docs",
+    "url": "https://svelte.dev/docs",
+    "query": "svelte stores derived"
+  },
+  {
+    "site": "Prisma Docs",
+    "url": "https://www.prisma.io/docs",
+    "query": "prisma relation query"
+  },
+  {
+    "site": "Supabase Docs",
+    "url": "https://supabase.com/docs",
+    "query": "supabase row level security"
+  },
+  {
+    "site": "Stripe Docs",
+    "url": "https://docs.stripe.com",
+    "query": "stripe checkout webhooks"
+  },
+  {
+    "site": "FastAPI Docs",
+    "url": "https://fastapi.tiangolo.com",
+    "query": "fastapi background tasks"
+  },
+  {
+    "site": "Django Docs",
+    "url": "https://docs.djangoproject.com",
+    "query": "django queryset annotate"
+  }
+]

@@ -127,6 +127,18 @@ SITE_QUERY_SUFFIXES = {
     "weibo": ["讨论", "教程", "经验"],
     "tieba": ["帖子", "吧", "讨论"],
     "x": ["thread", "post", "discussion"],
+    "quora": ["answer", "discussion", "question"],
+    "medium": ["article", "post", "guide"],
+    "juejin": ["文章", "教程", "实战"],
+    "cnblogs": ["博客", "文章", "教程"],
+    "infoq": ["文章", "报道", "实践"],
+    "51cto": ["文章", "博客", "教程"],
+    "tencent": ["文章", "博客", "教程"],
+    "aliyun": ["文章", "博客", "教程"],
+    "sspai": ["文章", "经验", "评测"],
+    "huxiu": ["文章", "报道", "分析"],
+    "ifanr": ["文章", "报道", "分析"],
+    "douban": ["讨论", "帖子", "小组"],
     "gitlab": ["repo", "project", "issue"],
     "producthunt": ["Product Hunt", "products", "posts"],
     "36kr": ["资讯", "报道", "文章"],
@@ -140,6 +152,18 @@ EXTERNAL_DISCOVERY_EXTRA_SUFFIXES = {
     "weibo.com": ["GitHub", "发布", "教程"],
     "x.com": ["GitHub", "thread", "post", "discussion"],
     "reddit.com": ["GitHub", "discussion", "review"],
+    "quora.com": ["answer", "discussion", "question"],
+    "medium.com": ["article", "guide", "tutorial"],
+    "juejin.cn": ["文章", "教程", "实战"],
+    "cnblogs.com": ["文章", "博客", "教程"],
+    "infoq.cn": ["文章", "报道", "实践"],
+    "51cto.com": ["文章", "博客", "教程"],
+    "tencent.com": ["文章", "博客", "教程"],
+    "aliyun.com": ["文章", "博客", "教程"],
+    "sspai.com": ["文章", "经验", "评测"],
+    "huxiu.com": ["文章", "报道", "分析"],
+    "ifanr.com": ["文章", "报道", "分析"],
+    "douban.com": ["讨论", "帖子", "小组"],
 }
 ACTIONABLE_DISCOVERY_DOMAINS = {
     "github.com",
@@ -165,6 +189,18 @@ EXTERNAL_DISCOVERY_BRANDS = {
     "weibo.com": "微博 weibo",
     "reddit.com": "reddit",
     "x.com": "x twitter",
+    "quora.com": "quora",
+    "medium.com": "medium",
+    "juejin.cn": "掘金 juejin",
+    "cnblogs.com": "博客园 cnblogs",
+    "infoq.cn": "infoq",
+    "51cto.com": "51cto",
+    "tencent.com": "腾讯云 开发者",
+    "aliyun.com": "阿里云 开发者",
+    "sspai.com": "少数派 sspai",
+    "huxiu.com": "虎嗅 huxiu",
+    "ifanr.com": "爱范儿 ifanr",
+    "douban.com": "豆瓣 douban",
     "gitlab.com": "gitlab",
     "producthunt.com": "product hunt",
     "36kr.com": "36kr",
@@ -176,6 +212,18 @@ SITE_FALLBACK_ORDER = {
     "douyin.com": ("external", "domain", "browser"),
     "weibo.com": ("external", "domain", "browser"),
     "x.com": ("external", "domain", "browser"),
+    "quora.com": ("external", "domain", "browser"),
+    "medium.com": ("external", "domain", "browser"),
+    "juejin.cn": ("external", "domain", "browser"),
+    "cnblogs.com": ("external", "domain", "browser"),
+    "infoq.cn": ("external", "domain", "browser"),
+    "51cto.com": ("external", "domain", "browser"),
+    "tencent.com": ("external", "domain", "browser"),
+    "aliyun.com": ("external", "domain", "browser"),
+    "sspai.com": ("external", "domain", "browser"),
+    "huxiu.com": ("external", "domain", "browser"),
+    "ifanr.com": ("external", "domain", "browser"),
+    "douban.com": ("external", "domain", "browser"),
     "gitlab.com": ("external", "domain", "browser"),
     "producthunt.com": ("domain", "external", "browser"),
     "reddit.com": ("domain", "external", "browser"),
@@ -1056,6 +1104,20 @@ def run_json(cmd: List[str], timeout: int = 45) -> Dict:
     return json.loads(proc.stdout)
 
 
+def extract_meta_refresh_target(raw: str, base_url: str) -> str:
+    match = re.search(
+        r'<meta[^>]+http-equiv=["\']refresh["\'][^>]+content=["\'][^"\']*url=(?P<target>[^"\']+)["\']',
+        raw,
+        re.I | re.S,
+    )
+    if not match:
+        return ""
+    target = clean(html.unescape(match.group("target")))
+    if not target:
+        return ""
+    return urllib.parse.urljoin(base_url, target)
+
+
 def fetch_with_reader_fallback(url: str) -> Tuple[str, str]:
     domain = urllib.parse.urlparse(url).netloc.lower()
     prefer_reader = domain in READER_FIRST_DOMAINS
@@ -1066,7 +1128,14 @@ def fetch_with_reader_fallback(url: str) -> Tuple[str, str]:
         except Exception:
             pass
     try:
-        return http_get(url), "direct"
+        raw = http_get(url)
+        refresh_target = extract_meta_refresh_target(raw, url)
+        if refresh_target and refresh_target != url:
+            try:
+                return http_get(refresh_target), "direct_refresh"
+            except Exception:
+                pass
+        return raw, "direct"
     except Exception:
         pass
     reader_url = f"https://r.jina.ai/http://{url.removeprefix('https://').removeprefix('http://')}"

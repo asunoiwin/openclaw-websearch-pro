@@ -1,0 +1,52 @@
+[
+  {
+    "site": "InfoQ",
+    "url": "https://www.infoq.cn",
+    "query": "ai agent search orchestration"
+  },
+  {
+    "site": "Cnblogs",
+    "url": "https://www.cnblogs.com",
+    "query": "python crawler anti bot"
+  },
+  {
+    "site": "51CTO",
+    "url": "https://www.51cto.com",
+    "query": "openclaw 搜索优化"
+  },
+  {
+    "site": "Tencent Cloud Dev",
+    "url": "https://cloud.tencent.com/developer",
+    "query": "python requests anti bot"
+  },
+  {
+    "site": "Aliyun Developer",
+    "url": "https://developer.aliyun.com",
+    "query": "向量检索 重排"
+  },
+  {
+    "site": "Sspai",
+    "url": "https://sspai.com",
+    "query": "浏览器 自动化 工作流"
+  },
+  {
+    "site": "Huxiu",
+    "url": "https://www.huxiu.com",
+    "query": "ai agent 搜索"
+  },
+  {
+    "site": "ifanr",
+    "url": "https://www.ifanr.com",
+    "query": "ai agent 搜索"
+  },
+  {
+    "site": "Douban",
+    "url": "https://www.douban.com/search",
+    "query": "蓝牙耳机 评测"
+  },
+  {
+    "site": "AliExpress",
+    "url": "https://www.aliexpress.com",
+    "query": "bluetooth earbuds"
+  }
+]

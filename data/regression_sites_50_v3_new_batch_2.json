@@ -1,0 +1,52 @@
+[
+  {
+    "site": "Flask Docs",
+    "url": "https://flask.palletsprojects.com",
+    "query": "flask blueprints"
+  },
+  {
+    "site": "Rust Docs",
+    "url": "https://doc.rust-lang.org",
+    "query": "rust tokio timeout"
+  },
+  {
+    "site": "Go Docs",
+    "url": "https://go.dev",
+    "query": "golang context deadline exceeded"
+  },
+  {
+    "site": "Java Docs",
+    "url": "https://docs.oracle.com/en/java/",
+    "query": "java stream collect groupingby"
+  },
+  {
+    "site": "Web.dev",
+    "url": "https://web.dev",
+    "query": "web performance lazy loading"
+  },
+  {
+    "site": "Can I Use",
+    "url": "https://caniuse.com",
+    "query": "css subgrid support"
+  },
+  {
+    "site": "Chrome Developers",
+    "url": "https://developer.chrome.com",
+    "query": "chrome extension manifest v3"
+  },
+  {
+    "site": "AWS Docs",
+    "url": "https://docs.aws.amazon.com",
+    "query": "aws s3 presigned url"
+  },
+  {
+    "site": "DigitalOcean Docs",
+    "url": "https://docs.digitalocean.com",
+    "query": "digitalocean app platform env vars"
+  },
+  {
+    "site": "Railway Docs",
+    "url": "https://docs.railway.com",
+    "query": "railway variables build"
+  }
+]

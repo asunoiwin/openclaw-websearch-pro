@@ -1,0 +1,52 @@
+[
+  {
+    "site": "Render Docs",
+    "url": "https://render.com/docs",
+    "query": "render background worker"
+  },
+  {
+    "site": "Modal Docs",
+    "url": "https://modal.com/docs",
+    "query": "modal volume mounts"
+  },
+  {
+    "site": "Replicate Docs",
+    "url": "https://replicate.com/docs",
+    "query": "replicate predictions api"
+  },
+  {
+    "site": "OpenRouter Docs",
+    "url": "https://openrouter.ai/docs",
+    "query": "openrouter tool calling"
+  },
+  {
+    "site": "LangChain Docs",
+    "url": "https://python.langchain.com/docs",
+    "query": "langchain retriever memory"
+  },
+  {
+    "site": "LlamaIndex Docs",
+    "url": "https://docs.llamaindex.ai",
+    "query": "llamaindex vector store index"
+  },
+  {
+    "site": "Quora",
+    "url": "https://www.quora.com/search?q=openclaw",
+    "query": "openclaw 搜索优化"
+  },
+  {
+    "site": "Hacker News",
+    "url": "https://news.ycombinator.com",
+    "query": "openclaw agent search"
+  },
+  {
+    "site": "Medium",
+    "url": "https://medium.com/search?q=openclaw",
+    "query": "openclaw 搜索优化"
+  },
+  {
+    "site": "Juejin",
+    "url": "https://juejin.cn/search?query=openclaw",
+    "query": "openclaw 搜索优化"
+  }
+]

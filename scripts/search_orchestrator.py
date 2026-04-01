@@ -1328,7 +1328,7 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
         "--save_data_path",
         str(out_dir),
         "--get_comment",
-        "false",
+        "true",
         "--get_sub_comment",
         "false",
         "--max_concurrency_num",
@@ -1370,17 +1370,43 @@ def extract_mediacrawler_douyin_special(url: str, query: str) -> Dict | None:
         value = item.get(field)
         if value not in (None, "", 0, "0"):
             stats.append(f"{field}={value}")
-    text = " ".join(part for part in [title, author, " ".join(stats)] if part)
+    comment_bits = []
+    for key in ("comments", "comment_list", "comments_list"):
+        comments = item.get(key)
+        if not isinstance(comments, list):
+            continue
+        for entry in comments[:3]:
+            if not isinstance(entry, dict):
+                continue
+            content = clean(
+                entry.get("content", "")
+                or entry.get("text", "")
+                or entry.get("desc", "")
+            )
+            if content:
+                comment_bits.append(content[:120])
+        if comment_bits:
+            break
+    text = " ".join(part for part in [title, author, " ".join(stats), " ".join(comment_bits)] if part)
     summary = summarize_text(text, query)
     if not summary and title:
         summary = [title[:280]]
+    for comment in comment_bits:
+        if len(summary) >= 5:
+            break
+        if comment not in summary:
+            summary.append(comment)
     if not summary:
         return None
     sections = []
+    if title:
+        sections.append({"level": "title", "text": title[:220]})
     if author:
         sections.append({"level": "meta", "text": f"author: {author}"})
     if stats:
         sections.append({"level": "meta", "text": ", ".join(stats)})
+    if comment_bits:
+        sections.append({"level": "comments", "text": " | ".join(comment_bits[:2])})
     links = []
     for field in ("cover_url", "video_download_url", "music_download_url"):
         value = clean(item.get(field, ""))

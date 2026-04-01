@@ -288,11 +288,12 @@ def test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json():
                     self.stderr = ""
 
             def fake_run(cmd, cwd=None, text=True, capture_output=True, timeout=90):
+                assert cmd[cmd.index("--get_comment") + 1] == "true"
                 save_path = Path(cmd[cmd.index("--save_data_path") + 1])
                 target = save_path / "douyin" / "json"
                 target.mkdir(parents=True, exist_ok=True)
                 (target / "detail_contents_2026-03-31.json").write_text(
-                    '[{"title":"OpenClaw 抖音教程","nickname":"AI学长","liked_count":"123","comment_count":"8","cover_url":"https://example.com/c.jpg"}]',
+                    '[{"title":"OpenClaw 抖音教程","nickname":"AI学长","liked_count":"123","comment_count":"8","cover_url":"https://example.com/c.jpg","comments":[{"content":"这个自动化流程很清楚"},{"content":"部署后速度不错"}]}]',
                     encoding="utf-8",
                 )
                 return FakeProc()
@@ -313,6 +314,8 @@ def test_mediacrawler_douyin_adapter_uses_cookie_file_and_output_json():
             assert result["fetch_mode"] == "mediacrawler_douyin"
             assert "mediacrawler_douyin" in result["applied_rules"]
             assert "cookie_file_login" in result["applied_rules"]
+            assert any(section["level"] == "comments" for section in result["sections"])
+            assert any("这个自动化流程很清楚" in line for line in result["summary"])
     finally:
         module.mediacrawler_available = original_available
         module.DOUYIN_COOKIE_FILE = original_cookie_file

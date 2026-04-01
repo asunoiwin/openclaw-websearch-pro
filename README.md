@@ -143,8 +143,13 @@ The QR workflow is file-based by design. The tool returns an absolute PNG path s
 
 1. Put this project under:
    - `/Users/rico/.openclaw/extensions/openclaw-websearch-pro`
-2. Allow it in OpenClaw plugin config:
-   - plugin id: `openclaw-websearch-pro`
+2. Apply local config:
+
+```bash
+cd /Users/rico/.openclaw/extensions/openclaw-websearch-pro
+npm run install:local
+```
+
 3. Recommended preview files:
    - `/Users/rico/.openclaw/workspace/.openclaw/websearch-pro-preview.json`
    - `/Users/rico/.openclaw/workspace/.openclaw/websearch-pro-auth-preview.json`

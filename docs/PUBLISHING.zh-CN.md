@@ -48,7 +48,14 @@ python3 scripts/auth_workflow.py status '{"sites":["xiaohongshu","douyin","zhihu
 
 ## OpenClaw 本地启用
 
-本地 OpenClaw 配置已经接入：
+应用或刷新本地配置：
+
+```bash
+cd /Users/rico/.openclaw/extensions/openclaw-websearch-pro
+npm run install:local
+```
+
+本地 OpenClaw 配置应包含：
 
 - 插件 id：`openclaw-websearch-pro`
 - preview file：

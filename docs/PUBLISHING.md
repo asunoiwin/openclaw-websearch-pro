@@ -46,7 +46,14 @@ python3 scripts/auth_workflow.py status '{"sites":["xiaohongshu","douyin","zhihu
 
 ## OpenClaw Activation
 
-The local OpenClaw config already contains:
+Apply or refresh local config:
+
+```bash
+cd /Users/rico/.openclaw/extensions/openclaw-websearch-pro
+npm run install:local
+```
+
+The local OpenClaw config should contain:
 
 - plugin id: `openclaw-websearch-pro`
 - preview file:

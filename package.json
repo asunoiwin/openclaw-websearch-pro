@@ -6,7 +6,8 @@
   "type": "commonjs",
   "main": "src/index.js",
   "scripts": {
-    "test": "node tests/smoke.test.js && python3 tests/search_orchestrator_regression_test.py"
+    "test": "node tests/smoke.test.js && python3 tests/search_orchestrator_regression_test.py",
+    "install:local": "python3 scripts/install_local.py"
   },
   "openclaw": {
     "extensions": [

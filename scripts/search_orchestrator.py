@@ -196,6 +196,23 @@ ACTIONABLE_DISCOVERY_DOMAINS = {
     "zhihu.com",
     "bilibili.com",
 }
+CONTENT_ROOTS = {
+    "zhihu.com",
+    "csdn.net",
+    "baidu.com",
+    "quora.com",
+    "medium.com",
+    "juejin.cn",
+    "cnblogs.com",
+    "infoq.cn",
+    "51cto.com",
+    "tencent.com",
+    "aliyun.com",
+    "sspai.com",
+    "huxiu.com",
+    "ifanr.com",
+    "douban.com",
+}
 COMMERCE_ROOTS = {
     "taobao.com",
     "tmall.com",
@@ -1101,6 +1118,19 @@ def is_homepage_like(url: str) -> bool:
     if not path:
         return True
     return path in {"search", "search_result", "results", "all", "blog", "models"}
+
+
+def is_content_detail_url(url: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    root = root_domain(parsed.netloc.lower())
+    path = parsed.path.lower()
+    if root == "zhihu.com":
+        return any(token in path for token in ("/question/", "/answer/", "/p/"))
+    if root == "csdn.net":
+        return any(token in path for token in ("/article/details/", "/column/details/"))
+    if root == "baidu.com":
+        return "/p/" in path or "/f?" in path
+    return any(token in path for token in ("/article", "/post", "/posts/", "/details/", "/question/", "/answer/", "/p/", "/column/", "/blog/"))
 
 
 def should_skip_commerce_homepage_fetch(url: str, query: str) -> bool:
@@ -3545,6 +3575,13 @@ def score_result(item: SearchResult, query: str) -> float:
         score += 3
     if any(token in hay for token in ("readme", "install", "教程", "指南", "文档", "skill", "plugin")):
         score += 4
+    if root in CONTENT_ROOTS:
+        if is_content_detail_url(item.url):
+            score += 7
+        if looks_like_search_or_shell_url(item.url) and not is_content_detail_url(item.url):
+            score -= 6
+        if is_homepage_like(item.url) and not is_content_detail_url(item.url):
+            score -= 5
     if root in COMMERCE_ROOTS:
         path = urllib.parse.urlparse(item.url).path.lower()
         if any(token in path for token in ("/goods", "goods.html", "/item", "item.html", "/detail")):

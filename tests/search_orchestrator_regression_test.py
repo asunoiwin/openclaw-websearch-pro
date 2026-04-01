@@ -1348,6 +1348,46 @@ def test_external_discovery_fallback_for_csdn_uses_article_suffixes():
     assert any(token in joined for token in ["文章", "博客", "实战"])
 
 
+def test_score_result_prefers_csdn_article_over_homepage():
+    article = module.SearchResult(
+        "OpenClaw 搜索优化实战 - CSDN博客",
+        "https://blog.csdn.net/example/article/details/123456",
+        "教程 实战 搜索优化",
+        "bing",
+        "openclaw 搜索优化",
+        "csdn",
+    )
+    home = module.SearchResult(
+        "CSDN - 专业开发者社区",
+        "https://www.csdn.net/",
+        "开发者社区 博客 下载",
+        "bing",
+        "openclaw 搜索优化",
+        "csdn",
+    )
+    assert module.score_result(article, "openclaw 搜索优化") > module.score_result(home, "openclaw 搜索优化")
+
+
+def test_score_result_prefers_tieba_post_over_shell_url():
+    post = module.SearchResult(
+        "OpenClaw吧-实战贴",
+        "https://tieba.baidu.com/p/1234567890",
+        "部署 经验 讨论",
+        "bing",
+        "openclaw",
+        "tieba",
+    )
+    shell = module.SearchResult(
+        "百度贴吧搜索",
+        "https://tieba.baidu.com/f/search/res?ie=utf-8&qw=openclaw",
+        "贴吧 搜索",
+        "bing",
+        "openclaw",
+        "tieba",
+    )
+    assert module.score_result(post, "openclaw") > module.score_result(shell, "openclaw")
+
+
 def test_known_error_shell_detects_aliexpress_punish_page():
     raw = '''
     <script>

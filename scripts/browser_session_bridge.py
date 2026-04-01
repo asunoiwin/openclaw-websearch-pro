@@ -27,10 +27,14 @@ def root_domain(value: str) -> str:
 
 def infer_site_key(url: str) -> str:
     root = root_domain(url)
+    if "csdn.net" in root:
+        return "csdn"
     if "taobao.com" in root or "tmall.com" in root:
         return "taobao"
     if "jd.com" in root:
         return "jd"
+    if "baidu.com" in root:
+        return "baidu"
     if "zhihu.com" in root:
         return "zhihu"
     if "xiaohongshu.com" in root:
@@ -85,9 +89,21 @@ def detect_auth_state(url: str, title: str, text: str = "") -> dict:
         if "淘宝搜索" in title or "人付款" in text or "店铺" in text:
             return ok("taobao_search_page")
         return unknown("taobao_unclassified")
+    if site == "csdn":
+        if "404" in title_l or "内容不存在" in text or "离你而去了" in text:
+            return expired("csdn_missing_page")
+        if "登录后您可以享受以下权益" in text or "登录后复制" in text or "vip文章" in text:
+            return expired("csdn_access_wall")
+        if "csdn博客" in title_l or "阅读" in text_l or "收藏" in text_l:
+            return ok("csdn_article_page")
+        return unknown("csdn_unclassified")
     if site == "zhihu":
+        if "没有知识存在的荒原" in title or "没有知识存在的荒原" in text:
+            return expired("zhihu_missing_page")
         if "登录" in title and "search" not in url_l:
             return expired("zhihu_login_shell")
+        if "盐选" in text or "阅读全文" in text or "登录后你可以不限量看优质内容" in text:
+            return expired("zhihu_access_wall")
         if "搜索结果" in title or "回答" in text or "浏览" in text:
             return ok("zhihu_search_page")
         return unknown("zhihu_unclassified")
@@ -111,6 +127,16 @@ def detect_auth_state(url: str, title: str, text: str = "") -> dict:
         if "/search/" in url_l or "/search?" in url_l:
             return ok("reddit_search_page")
         return unknown("reddit_unclassified")
+    if site == "baidu":
+        if "tieba.baidu.com" in url_l:
+            if "发贴 登录 首页 我的" in text or "下载贴吧app" in text:
+                return expired("tieba_login_shell")
+            if "百度贴吧" in title and ("楼主" in text or "只看楼主" in text or "回复贴" in text):
+                return ok("tieba_post_page")
+            if "贴吧" in title and ("热帖" in text or "吧主" in text):
+                return ok("tieba_forum_page")
+            return unknown("tieba_unclassified")
+        return unknown("baidu_unclassified")
     if site == "pinduoduo":
         if "search_result" in url_l:
             return ok("pinduoduo_search_page")

@@ -1754,6 +1754,54 @@ def test_browser_auth_audit_rejects_expired_session():
     assert result is None
 
 
+def test_browser_bridge_detects_csdn_missing_page():
+    import importlib.util
+    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
+    bridge = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(bridge)
+    result = bridge.detect_auth_state(
+        "https://blog.csdn.net/example/article/details/1",
+        "404",
+        "啊哦 你想找的内容离你而去了哦 内容不存在",
+    )
+    assert result["auth_state"] == "expired"
+    assert result["auth_reason"] == "csdn_missing_page"
+
+
+def test_browser_bridge_detects_zhihu_missing_page():
+    import importlib.util
+    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
+    bridge = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(bridge)
+    result = bridge.detect_auth_state(
+        "https://www.zhihu.com/question/1",
+        "你似乎来到了没有知识存在的荒原 - 知乎",
+        "你似乎来到了没有知识存在的荒原",
+    )
+    assert result["auth_state"] == "expired"
+    assert result["auth_reason"] == "zhihu_missing_page"
+
+
+def test_browser_bridge_detects_tieba_login_shell():
+    import importlib.util
+    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
+    bridge = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(bridge)
+    result = bridge.detect_auth_state(
+        "https://tieba.baidu.com/p/1",
+        "百度贴吧",
+        "发贴 登录 首页 我的 下载贴吧app",
+    )
+    assert result["auth_state"] == "expired"
+    assert result["auth_reason"] == "tieba_login_shell"
+
+
 def test_generic_search_shell_extraction_from_sections():
     html = """
     <html><head><title>openclaw-哔哩哔哩_bilibili</title></head><body>

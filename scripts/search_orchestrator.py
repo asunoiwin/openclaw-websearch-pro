@@ -731,6 +731,43 @@ def extract_commerce_search_card_sections(summary: List[str]) -> List[Dict[str, 
     return sections[:8]
 
 
+def commerce_external_source_level(url: str, title: str, snippet: str) -> str:
+    item_root = root_domain(urllib.parse.urlparse(url).netloc.lower())
+    combined = clean(f"{title} {snippet}")
+    if item_root == "zhizhizhi.com":
+        return "coupon"
+    if item_root in {"smzdm.com", "zol.com.cn"}:
+        return "review"
+    if item_root == "bilibili.com":
+        return "video"
+    if item_root == "zhihu.com":
+        return "qa"
+    if any(token in combined for token in ("优惠券", "补贴", "到手价", "价格")):
+        return "price"
+    if any(token in combined for token in ("测评", "评测", "推荐", "对比")):
+        return "review"
+    return "result"
+
+
+def extract_commerce_external_sections(items: List["SearchResult"]) -> List[Dict[str, str]]:
+    sections: List[Dict[str, str]] = []
+    seen = set()
+    for item in items:
+        source_level = commerce_external_source_level(item.url, item.title, item.snippet)
+        source_key = (source_level, clean(item.title))
+        if source_key[1] and source_key not in seen:
+            seen.add(source_key)
+            sections.append({"level": source_level, "text": clean(item.title)[:220]})
+        line = format_commerce_line(item.title, item.snippet, item.url)
+        for section in extract_commerce_search_card_sections([line]):
+            key = (section["level"], section["text"])
+            if key in seen:
+                continue
+            seen.add(key)
+            sections.append(section)
+    return sections[:10]
+
+
 def merge_extraction_results(primary: Dict | None, secondary: Dict | None) -> Dict | None:
     if primary and not secondary:
         return primary
@@ -3026,7 +3063,11 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
             (f"{item.title}: {item.snippet[:180]}".strip(": ") if item.snippet else item.title)
             for item in useful
         ],
-        "sections": [{"level": "results", "text": item.title} for item in useful],
+        "sections": (
+            extract_commerce_external_sections(useful)
+            if root in COMMERCE_ROOTS else
+            [{"level": "results", "text": item.title} for item in useful]
+        ),
         "links": [{"text": item.title, "href": item.url} for item in useful],
         "quality": "medium",
         "source_query": queries[:4],

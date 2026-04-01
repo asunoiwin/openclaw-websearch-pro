@@ -2086,6 +2086,8 @@ def test_commerce_external_discovery_prefers_price_or_review_sources():
 
     assert result is not None
     assert result["links"][0]["href"] == "https://www.zhizhizhi.com/c/ermai/shop/pinduoduo"
+    levels = [section["level"] for section in result["sections"]]
+    assert "coupon" in levels
 
 
 def test_commerce_external_discovery_penalizes_generic_zhihu_purchase_questions():
@@ -2182,6 +2184,40 @@ def test_commerce_external_final_sort_prefers_review_or_price_sources():
     assert result is not None
     top_two = [link["href"] for link in result["links"][:2]]
     assert "https://zhuanlan.zhihu.com/p/1986249433101402943" not in top_two
+
+
+def test_commerce_external_sections_classify_source_types():
+    items = [
+        module.SearchResult(
+            "拼多多耳机\\耳麦价格和优惠券 - 值值值",
+            "https://www.zhizhizhi.com/c/ermai/shop/pinduoduo",
+            "优惠券 比价",
+            "bing",
+            "蓝牙耳机 拼多多",
+            "general",
+        ),
+        module.SearchResult(
+            "拼多多蓝牙耳机吐血推荐 - 什么值得买",
+            "https://post.smzdm.com/p/agqzg0z7/",
+            "测评 推荐",
+            "bing",
+            "蓝牙耳机 拼多多",
+            "general",
+        ),
+        module.SearchResult(
+            "拼多多里10几块钱的蓝牙耳机，真的能用吗？_哔哩哔哩_bilibili",
+            "https://www.bilibili.com/video/BV11P4y137Yc/",
+            "测评 开箱",
+            "bing",
+            "蓝牙耳机 拼多多",
+            "general",
+        ),
+    ]
+    sections = module.extract_commerce_external_sections(items)
+    levels = [section["level"] for section in sections]
+    assert "coupon" in levels
+    assert "review" in levels
+    assert "video" in levels
 
 
 def test_producthunt_domain_fallback_uses_producthunt_suffixes():

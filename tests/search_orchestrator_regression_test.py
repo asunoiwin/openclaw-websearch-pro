@@ -221,6 +221,78 @@ def test_browser_session_fallback_for_csdn_logged_article():
     assert "browser_session_fallback" in result["applied_rules"]
 
 
+def test_browser_session_fallback_accepts_tieba_post_text():
+    original_run_json = module.run_json
+
+    def fake_run_json(args, timeout=45):
+        if args[1] != str(module.BRIDGE):
+            raise AssertionError(args)
+        if args[2] == "status" and args[3] == "safari":
+            return {"running": True, "dom_extract": True, "url": "https://tieba.baidu.com/p/123"}
+        if args[2] == "audit" and args[3] == "safari":
+            return {
+                "browser": "safari",
+                "status": {"auth_state": "authenticated", "auth_reason": "tieba_post_page"},
+                "extract": {
+                    "url": "https://tieba.baidu.com/p/123",
+                    "title": "OpenClaw吧-实战贴_百度贴吧",
+                    "text": "OpenClaw 吧 只看楼主 回复 楼层 这是一篇部署实战贴，包含安装、模型配置、报错修复和网关排查经验。",
+                    "headings": [],
+                    "links": [],
+                    "auth_state": "authenticated",
+                    "auth_reason": "tieba_post_page",
+                },
+            }
+        if args[2] == "open" and args[3] == "safari":
+            return {"ok": True}
+        raise AssertionError(args)
+
+    module.run_json = fake_run_json
+    try:
+        result = module.browser_assisted_extract("https://tieba.baidu.com/p/123", "openclaw")
+    finally:
+        module.run_json = original_run_json
+
+    assert result is not None
+    assert result["fetch_mode"] == "browser_session"
+
+
+def test_browser_session_fallback_accepts_wenku_doc_text():
+    original_run_json = module.run_json
+
+    def fake_run_json(args, timeout=45):
+        if args[1] != str(module.BRIDGE):
+            raise AssertionError(args)
+        if args[2] == "status" and args[3] == "safari":
+            return {"running": True, "dom_extract": True, "url": "https://wenku.baidu.com/view/abc.html"}
+        if args[2] == "audit" and args[3] == "safari":
+            return {
+                "browser": "safari",
+                "status": {"auth_state": "authenticated", "auth_reason": "wenku_doc_page"},
+                "extract": {
+                    "url": "https://wenku.baidu.com/view/abc.html",
+                    "title": "OpenClaw 安装指南 - 百度文库",
+                    "text": "文档信息 页数 12 收藏 下载 OpenClaw 安装指南，包含部署步骤、模型配置、代理设置和常见报错处理。",
+                    "headings": [],
+                    "links": [],
+                    "auth_state": "authenticated",
+                    "auth_reason": "wenku_doc_page",
+                },
+            }
+        if args[2] == "open" and args[3] == "safari":
+            return {"ok": True}
+        raise AssertionError(args)
+
+    module.run_json = fake_run_json
+    try:
+        result = module.browser_assisted_extract("https://wenku.baidu.com/view/abc.html", "openclaw 安装")
+    finally:
+        module.run_json = original_run_json
+
+    assert result is not None
+    assert result["fetch_mode"] == "browser_session"
+
+
 def test_yt_dlp_adapter_for_content_page():
     original_run = module.subprocess.run
     original_available = module.yt_dlp_available
@@ -1464,6 +1536,16 @@ def test_score_result_prefers_tieba_post_over_shell_url():
         "tieba",
     )
     assert module.score_result(post, "openclaw") > module.score_result(shell, "openclaw")
+
+
+def test_infer_site_from_url_distinguishes_wenku_and_tieba():
+    assert module.infer_site_from_url("https://wenku.baidu.com/view/abc.html") == "wenku"
+    assert module.infer_site_from_url("https://tieba.baidu.com/p/123") == "tieba"
+
+
+def test_has_site_specific_result_signal_for_wenku_and_tieba():
+    assert module.has_site_specific_result_signal("wenku", "文档信息 页数 下载 收藏", "openclaw 安装") is True
+    assert module.has_site_specific_result_signal("tieba", "只看楼主 回复 贴吧 楼层", "openclaw") is True
 
 
 def test_known_error_shell_detects_aliexpress_punish_page():

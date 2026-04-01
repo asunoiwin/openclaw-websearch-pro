@@ -2444,6 +2444,10 @@ def run_fallbacks(url: str, query: str, allow_fallback: bool = True, follow_dept
 def infer_site_from_url(url: str) -> str:
     domain = urllib.parse.urlparse(url).netloc.lower()
     root = root_domain(domain)
+    if "wenku.baidu.com" in domain:
+        return "wenku"
+    if "tieba.baidu.com" in domain:
+        return "tieba"
     if "taobao.com" in root or "tmall.com" in root:
         return "taobao"
     if "jd.com" in root:
@@ -2466,6 +2470,12 @@ def has_site_specific_result_signal(site: str, text: str, query: str) -> bool:
         if "加载中" in text and sum(1 for marker in markers if marker in text) < 2:
             return False
         return sum(1 for marker in markers if marker in text) >= 1
+    if site == "wenku":
+        markers = ["文档信息", "页数", "下载", "收藏", "继续阅读", "试读", "文库", "会员", "vip"]
+        return sum(1 for marker in markers if marker.lower() in lowered) >= 1
+    if site == "tieba":
+        markers = ["楼主", "只看楼主", "回复", "贴吧", "发贴", "吧主", "热帖", "楼层"]
+        return sum(1 for marker in markers if marker.lower() in lowered) >= 1
     if site in {"douyin", "xiaohongshu", "bilibili"}:
         return query_overlap_score(text, query) >= 1 or any(marker in text for marker in ["教程", "视频", "笔记", "合集"])
     return True

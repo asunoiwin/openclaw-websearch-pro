@@ -811,6 +811,27 @@ def test_deep_extract_merges_douyin_profile_and_detail_results():
     assert "cookie_file_login" in result["applied_rules"]
 
 
+def test_merge_extraction_results_flattens_summary_lists():
+    merged = module.merge_extraction_results(
+        {
+            "summary": ["A", "B"],
+            "sections": [],
+            "links": [],
+            "quality": "medium",
+            "applied_rules": ["one"],
+        },
+        {
+            "summary": ["B", "C"],
+            "sections": [],
+            "links": [],
+            "quality": "high",
+            "applied_rules": ["two"],
+        },
+    )
+    assert merged is not None
+    assert merged["summary"] == ["A", "B", "C"]
+
+
 def test_known_error_shell_triggers_fallback_for_pinduoduo_shell():
     original_fetch = module.fetch_with_reader_fallback
     original_run_fallbacks = module.run_fallbacks

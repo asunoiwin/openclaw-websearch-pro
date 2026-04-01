@@ -742,12 +742,13 @@ def merge_extraction_results(primary: Dict | None, secondary: Dict | None) -> Di
     result = dict(primary)
     summary = []
     seen_summary = set()
-    for source in (primary.get("summary") or [], secondary.get("summary") or []):
-        item = clean(str(source))
-        if not item or item in seen_summary:
-            continue
-        seen_summary.add(item)
-        summary.append(item)
+    for source_list in (primary.get("summary") or [], secondary.get("summary") or []):
+        for source in source_list if isinstance(source_list, list) else [source_list]:
+            item = clean(str(source))
+            if not item or item in seen_summary:
+                continue
+            seen_summary.add(item)
+            summary.append(item)
     sections = []
     seen_sections = set()
     for section in list(primary.get("sections") or []) + list(secondary.get("sections") or []):

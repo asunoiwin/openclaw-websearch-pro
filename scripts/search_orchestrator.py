@@ -570,6 +570,101 @@ def extract_commerce_structured_fields(raw: str) -> List[str]:
     return fields[:6]
 
 
+def extract_commerce_param_fields(raw: str) -> List[str]:
+    sample = clean(re.sub(r"<[^>]+>", " ", raw or ""))[:12000]
+    fields: List[str] = []
+    seen = set()
+    keys = (
+        "品牌",
+        "型号",
+        "颜色分类",
+        "规格",
+        "套餐类型",
+        "版本",
+        "尺码",
+        "连接方式",
+        "适用型号",
+        "适用场景",
+        "续航时间",
+        "充电接口",
+    )
+    invalid_tokens = {"var", "function", "return", "script", "undefined", "null"}
+    for key in keys:
+        pattern = re.compile(rf"{re.escape(key)}\s*[:：]?\s*([^\s,，;；|]{{1,30}}(?:\s*[^\s,，;；|]{{1,20}}){{0,2}})")
+        for match in pattern.finditer(sample):
+            value = clean(match.group(1))
+            if not value:
+                continue
+            value_l = value.lower()
+            if any(token in value_l for token in invalid_tokens):
+                continue
+            if value.startswith("-") or len(re.findall(r"[\u4e00-\u9fffA-Za-z0-9]+", value)) < 1:
+                continue
+            label = f"{key}: {value}"
+            if label in seen:
+                continue
+            seen.add(label)
+            fields.append(label)
+            break
+    return fields[:6]
+
+
+def extract_commerce_media_links(raw: str, base_url: str) -> List[Dict[str, str]]:
+    links: List[Dict[str, str]] = []
+    seen = set()
+    candidates: List[str] = []
+    for key in ("og:image", "twitter:image"):
+        value = extract_meta_value(raw, (key,))
+        if value:
+            candidates.append(value)
+    for pattern in (
+        r'<img[^>]+(?:src|data-src)=["\'](https?://[^"\']+)["\']',
+        r'<img[^>]+(?:src|data-src)=["\'](//[^"\']+)["\']',
+    ):
+        for match in re.finditer(pattern, raw, re.I):
+            candidates.append(match.group(1))
+    for candidate in candidates:
+        href = urllib.parse.urljoin(base_url, clean(candidate))
+        if not href.startswith("http"):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        links.append({"text": "image", "href": href})
+        if len(links) >= 4:
+            break
+    return links
+
+
+def extract_commerce_detail_blocks(raw: str) -> List[str]:
+    sample = clean(re.sub(r"<[^>]+>", " ", raw or ""))[:12000]
+    blocks: List[str] = []
+    seen = set()
+    invalid_tokens = ("var ", "g_config", "window.", "function(", "appid", "toolbar", "webww")
+    patterns = (
+        r"(?:支持|采用|配备|搭载|适用于|提供|具备)[^。！!；;\n]{16,120}",
+        r"(?:蓝牙|降噪|续航|音质|佩戴|舒适|半入耳|入耳式|开放式)[^。！!；;\n]{12,100}",
+        r"(?:详情|参数|规格|卖点|特点)[^。！!；;\n]{12,100}",
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, sample, re.I):
+            block = clean(match.group(0))
+            if len(block) < 12 or block in seen:
+                continue
+            block_l = block.lower()
+            if any(token in block_l for token in invalid_tokens):
+                continue
+            if len(re.findall(r"(?:¥|￥)\s?\d+(?:\.\d+)?", block)) > 1:
+                continue
+            if len(re.findall(r"\d+(?:\.\d+)?万?\+?人付款|\d+(?:\.\d+)?万?\+?已售", block)) > 1:
+                continue
+            seen.add(block)
+            blocks.append(block)
+            if len(blocks) >= 3:
+                return blocks
+    return blocks
+
+
 def format_commerce_line(title: str, snippet: str, url: str) -> str:
     title = clean(title)
     snippet = clean(snippet)
@@ -663,6 +758,12 @@ def extract_commerce_detail_summary(title: str, desc: str, raw: str) -> List[str
     for field in extract_commerce_structured_fields(raw):
         if field not in candidates:
             candidates.append(field)
+    for field in extract_commerce_param_fields(raw):
+        if field not in candidates:
+            candidates.append(field)
+    for block in extract_commerce_detail_blocks(raw):
+        if block not in candidates:
+            candidates.append(block)
 
     detail_patterns = [
         r"(?:¥|￥)\s?\d+(?:\.\d+)?",
@@ -670,7 +771,7 @@ def extract_commerce_detail_summary(title: str, desc: str, raw: str) -> List[str
         r"\d+(?:\.\d+)?万?\+?人付款",
         r"\d+(?:\.\d+)?万?\+?已售",
         r"(?:官方旗舰店|旗舰店|专营店|自营|官方补贴)",
-        r"(?:颜色分类|规格|型号|套餐类型|版本|尺码)\s*[:：]?\s*[^\s,，;；]{1,24}",
+        r"(?:品牌|颜色分类|规格|型号|套餐类型|版本|尺码|连接方式|适用型号|适用场景|续航时间|充电接口)\s*[:：]?\s*[^\s,，;；]{1,24}",
     ]
     seen = set(clean(value) for value in candidates if clean(value))
     for pattern in detail_patterns:
@@ -2388,6 +2489,7 @@ def extract_commerce_search_cards_from_raw(raw: str, query: str, required_marker
     sample = clean(re.sub(r"<[^>]+>", " ", raw))
     if not sample:
         return []
+    invalid_tokens = ("var ", "g_config", "window.", "function(", "appid", "toolbar", "collection_url", "pid")
     price_matches = list(re.finditer(r"(?:¥|￥)\s?\d+(?:\.\d+)?", sample))
     if not price_matches:
         return []
@@ -2402,6 +2504,9 @@ def extract_commerce_search_cards_from_raw(raw: str, query: str, required_marker
         right = boundaries[idx + 1]
         chunk = clean(sample[left:right])
         if not chunk:
+            continue
+        chunk_l = chunk.lower()
+        if any(token in chunk_l for token in invalid_tokens):
             continue
         if required_markers and not any(marker in chunk for marker in required_markers):
             continue
@@ -2425,7 +2530,7 @@ def extract_taobao_special(url: str, raw: str, query: str) -> Dict | None:
     path = parsed.path.lower()
     title = extract_title_value(raw)
     desc = extract_meta_value(raw, ("description", "og:description", "twitter:description"))
-    if any(token in path for token in ("/item", "/detail", "/chanpin/")):
+    if any(token in path for token in ("/item", "/detail")):
         text = " ".join(part for part in (title, desc) if part)
         if query_overlap_score(text, query) < 1 and not has_commerce_content_signal([text]):
             return None
@@ -2433,15 +2538,34 @@ def extract_taobao_special(url: str, raw: str, query: str) -> Dict | None:
         if not summary:
             return None
         sections = extract_commerce_detail_sections(summary)
+        for block in extract_commerce_detail_blocks(raw):
+            if not any(section["text"] == block for section in sections):
+                sections.append({"level": "detail", "text": block[:220]})
         return {
             "url": url,
             "fetch_mode": "taobao_item_meta",
             "title": title or "Taobao Item",
-            "summary": summary[:5],
-            "sections": sections,
-            "links": [],
+            "summary": summary[:6],
+            "sections": sections[:10],
+            "links": extract_commerce_media_links(raw, url),
             "quality": "high" if len(summary) >= 2 else "medium",
             "applied_rules": ["taobao_item_meta"],
+        }
+    if "/chanpin/" in path:
+        cards = extract_commerce_search_cards_from_raw(raw, query, ("人付款", "旗舰店", "天猫", "包邮", "优惠券"))
+        if not cards:
+            return None
+        sections = extract_commerce_search_card_sections(cards)
+        links = extract_commerce_media_links(raw, url)
+        return {
+            "url": url,
+            "fetch_mode": "taobao_chanpin_cards",
+            "title": title or "Taobao Chanpin",
+            "summary": cards[:5],
+            "sections": sections,
+            "links": links,
+            "quality": "high" if len(cards) >= 3 else "medium",
+            "applied_rules": ["taobao_chanpin_cards"],
         }
     looks_like_search = any(token in path for token in ("/search", "/s")) or "q=" in parsed.query
     if not looks_like_search:
@@ -2478,13 +2602,16 @@ def extract_pinduoduo_special(url: str, raw: str, query: str) -> Dict | None:
         if not summary:
             return None
         sections = extract_commerce_detail_sections(summary)
+        for block in extract_commerce_detail_blocks(raw):
+            if not any(section["text"] == block for section in sections):
+                sections.append({"level": "detail", "text": block[:220]})
         return {
             "url": url,
             "fetch_mode": "pinduoduo_item_meta",
             "title": title or "Pinduoduo Item",
-            "summary": summary[:5],
-            "sections": sections,
-            "links": [],
+            "summary": summary[:6],
+            "sections": sections[:10],
+            "links": extract_commerce_media_links(raw, url),
             "quality": "high" if len(summary) >= 2 else "medium",
             "applied_rules": ["pinduoduo_item_meta"],
         }
@@ -2579,10 +2706,14 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
         commerce_root = root_domain(domain)
         for item_title, item_url, item_snippet in items:
             item_title = clean(re.sub(r"<[^>]+>", " ", item_title))
-            item_url = clean(html.unescape(item_url))
+            item_url = clean(urllib.parse.urljoin(url, html.unescape(item_url)))
             item_snippet = clean(re.sub(r"<[^>]+>", " ", item_snippet))
             if not item_title or not item_url:
                 continue
+            if commerce_root in COMMERCE_ROOTS:
+                item_path = urllib.parse.urlparse(item_url).path.lower()
+                if "/shop/view_shop" in item_path or "/shop/" in item_path:
+                    continue
             key = item_url.lower()
             if key in seen:
                 continue
@@ -2674,6 +2805,8 @@ def extract_search_page_special(url: str, raw: str, query: str) -> Dict | None:
 
 def extract_parser_search_results(url: str, parser: "Extractor", query: str) -> Dict | None:
     parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc.lower()
+    commerce_root = root_domain(domain)
     path = parsed.path.lower()
     query_params = urllib.parse.parse_qs(parsed.query)
     if not (
@@ -2687,11 +2820,18 @@ def extract_parser_search_results(url: str, parser: "Extractor", query: str) -> 
     seen = set()
     for link in parser.links:
         text = clean(link.get("text", ""))
-        href = clean(link.get("href", ""))
+        href = clean(urllib.parse.urljoin(url, link.get("href", "")))
         if not text or not href or href in seen:
             continue
         if text in {"搜索", "登录", "注册", "首页"}:
             continue
+        if commerce_root in COMMERCE_ROOTS:
+            href_path = urllib.parse.urlparse(href).path.lower()
+            if "/shop/view_shop" in href_path or "/shop/" in href_path:
+                continue
+            combined = clean(f"{text} {href}")
+            if query_overlap_score(combined, query) < 1 and not has_commerce_content_signal([combined]):
+                continue
         seen.add(href)
         items.append((text, href, ""))
         if len(items) >= 5:

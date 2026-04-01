@@ -1159,13 +1159,62 @@ def test_taobao_chanpin_meta_includes_price_review_and_spec_signals():
         "蓝牙耳机",
     )
     assert result is not None
-    assert result["fetch_mode"] == "taobao_item_meta"
+    assert result["fetch_mode"] == "taobao_chanpin_cards"
     joined = " | ".join(result["summary"])
     assert "￥159" in joined
-    assert "官方旗舰店" in joined
+    assert "付款" in joined
     levels = [section["level"] for section in result["sections"]]
     assert "price" in levels
     assert "sales" in levels
+
+
+def test_commerce_search_cards_skip_script_noise():
+    raw = """
+    <html><body>
+      蓝牙耳机-蓝牙耳机促销价格、蓝牙耳机品牌 - 淘宝 var g_config = window.g_config || {"appid":3,"toolbar":false}
+      ¥159 1.1万人付款 官方旗舰店
+      真无线蓝牙耳机 降噪长续航 ¥99 2万人付款 官方旗舰店
+    </body></html>
+    """
+    cards = module.extract_commerce_search_cards_from_raw(raw, "蓝牙耳机", ("人付款", "旗舰店"))
+    assert cards
+    assert "g_config" not in " | ".join(cards)
+
+
+def test_search_results_skip_commerce_shop_links():
+    raw = """
+    <html><body>
+      <a href="//store.taobao.com/shop/view_shop.htm?x=1">官方国货甄选</a>
+      <a href="https://www.taobao.com/list/item/123456.htm">真无线蓝牙耳机</a>
+      ¥99 2万人付款 官方旗舰店
+    </body></html>
+    """
+    result = module.extract_search_page_special(
+        "https://www.taobao.com/chanpin/demo.html",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert all("/shop/view_shop" not in link["href"] for link in result["links"])
+
+
+def test_parser_search_results_skip_commerce_shop_links():
+    parser = type(
+        "Parser",
+        (),
+        {
+            "title": "蓝牙耳机-淘宝",
+            "sections": [],
+            "links": [
+                {"text": "官方国货甄选", "href": "//store.taobao.com/shop/view_shop.htm?x=1"},
+                {"text": "真无线蓝牙耳机 ¥99 2万人付款 官方旗舰店", "href": "https://www.taobao.com/list/item/123456.htm"},
+            ],
+        },
+    )()
+    result = module.extract_parser_search_results("https://www.taobao.com/chanpin/demo.html", parser, "蓝牙耳机")
+    assert result is not None
+    assert len(result["links"]) == 1
+    assert "/shop/view_shop" not in result["links"][0]["href"]
 
 
 def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
@@ -1196,6 +1245,44 @@ def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():
     assert "sales" in levels
 
 
+def test_commerce_detail_extracts_media_links_and_detail_blocks():
+    raw = """
+    <html><head>
+      <meta property="og:image" content="https://img.example.com/a.jpg">
+      <title>OpenClaw 蓝牙耳机</title>
+    </head><body>
+      <img src="https://img.example.com/b.jpg">
+      采用蓝牙5.4低延迟方案，支持双设备连接和长续航。
+      配备13mm动圈单元，音质清晰，佩戴舒适。
+    </body></html>
+    """
+    result = module.extract_taobao_special(
+        "https://www.taobao.com/list/item/123456.htm",
+        raw,
+        "蓝牙耳机",
+    )
+    assert result is not None
+    assert result["links"]
+    assert result["links"][0]["href"].startswith("https://img.example.com/")
+    levels = [section["level"] for section in result["sections"]]
+    assert "detail" in levels
+
+
+def test_commerce_detail_blocks_skip_script_and_multi_card_noise():
+    raw = """
+    <html><body>
+      蓝牙耳机-蓝牙耳机促销价格、蓝牙耳机品牌 - 淘宝 var g_config = window.g_config || {"appid":3}
+      适用于苹果安卓通用 ¥10.01 20万+人付款 另一款 ¥41.80 2万+人付款
+      采用蓝牙5.4低延迟方案，支持双设备连接和长续航。
+    </body></html>
+    """
+    blocks = module.extract_commerce_detail_blocks(raw)
+    joined = " | ".join(blocks)
+    assert "g_config" not in joined
+    assert "20万+人付款" not in joined
+    assert "蓝牙5.4低延迟方案" in joined
+
+
 def test_commerce_detail_summary_reads_json_ld_fields():
     raw = """
     <html><head>
@@ -1216,6 +1303,36 @@ def test_commerce_detail_summary_reads_json_ld_fields():
     assert "SKU-1234" in joined
     assert "299.00" in joined or "¥ 299.00" in joined or "¥299.00" in joined
     assert "1288条评价" in joined
+
+
+def test_commerce_detail_summary_extracts_param_fields():
+    raw = """
+    <html><head><title>OpenClaw 蓝牙耳机</title></head><body>
+      品牌: OpenClaw
+      型号: OC-X1
+      连接方式: 蓝牙5.4
+      续航时间: 36小时
+      充电接口: Type-C
+    </body></html>
+    """
+    summary = module.extract_commerce_detail_summary("OpenClaw 蓝牙耳机", "", raw)
+    joined = " | ".join(summary)
+    assert "品牌: OpenClaw" in joined
+    assert "型号: OC-X1" in joined
+    assert "连接方式: 蓝牙5.4" in joined
+
+
+def test_commerce_detail_summary_skips_script_noise_param_values():
+    raw = """
+    <html><body>
+      品牌: - 淘宝 var foo = 1
+      型号: OC-X1
+    </body></html>
+    """
+    summary = module.extract_commerce_detail_summary("OpenClaw 蓝牙耳机", "", raw)
+    joined = " | ".join(summary)
+    assert "品牌: - 淘宝 var" not in joined
+    assert "型号: OC-X1" in joined
 
 
 def test_commerce_detail_sections_classify_key_fields():

@@ -128,6 +128,12 @@ def detect_auth_state(url: str, title: str, text: str = "") -> dict:
             return ok("reddit_search_page")
         return unknown("reddit_unclassified")
     if site == "baidu":
+        if "wenku.baidu.com" in url_l:
+            if any(token in text for token in ("试读已结束", "加入VIP免费下载", "继续阅读", "VIP专享文档", "文库VIP")):
+                return expired("wenku_access_wall")
+            if "wenku.baidu.com/view/" in url_l and any(token in text for token in ("页数", "下载", "收藏", "文档信息")):
+                return ok("wenku_doc_page")
+            return unknown("wenku_unclassified")
         if "tieba.baidu.com" in url_l:
             if "发贴 登录 首页 我的" in text or "下载贴吧app" in text:
                 return expired("tieba_login_shell")

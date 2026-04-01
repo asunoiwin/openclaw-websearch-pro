@@ -72,6 +72,7 @@ BROWSER_ASSIST_DOMAINS = {
     "zhihu.com",
     "www.zhihu.com",
     "tieba.baidu.com",
+    "wenku.baidu.com",
     "xiaohongshu.com",
     "www.xiaohongshu.com",
     "douyin.com",
@@ -146,6 +147,7 @@ SITE_QUERY_SUFFIXES = {
     "zhihu": ["经验", "回答"],
     "weibo": ["讨论", "教程", "经验"],
     "tieba": ["帖子", "吧", "讨论"],
+    "baidu": ["文库", "资料", "教程"],
     "x": ["thread", "post", "discussion"],
     "quora": ["answer", "discussion", "question"],
     "medium": ["article", "post", "guide"],
@@ -1129,7 +1131,7 @@ def is_content_detail_url(url: str) -> bool:
     if root == "csdn.net":
         return any(token in path for token in ("/article/details/", "/column/details/"))
     if root == "baidu.com":
-        return "/p/" in path or "/f?" in path
+        return "/p/" in path or "/f?" in path or "/view/" in path or "/share/" in path
     return any(token in path for token in ("/article", "/post", "/posts/", "/details/", "/question/", "/answer/", "/p/", "/column/", "/blog/"))
 
 
@@ -1344,7 +1346,7 @@ def looks_like_access_wall(title: str, text: str, url: str) -> bool:
     domain_markers = {
         "csdn.net": ["vip文章", "付费专栏", "登录后您可以享受以下权益", "专栏目录", "登录后复制"],
         "zhihu.com": ["盐选", "继续查看回答", "登录后你可以不限量看优质内容", "打开知乎app", "阅读全文"],
-        "baidu.com": ["打开百度app", "app内查看", "下载贴吧app", "贴吧app", "发贴 登录 首页 我的"],
+        "baidu.com": ["打开百度app", "app内查看", "下载贴吧app", "贴吧app", "发贴 登录 首页 我的", "试读已结束", "加入vip免费下载", "继续阅读", "文库vip专享"],
     }
     for root, markers in domain_markers.items():
         if domain == root and any(marker.lower() in sample for marker in markers):

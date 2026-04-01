@@ -1462,6 +1462,11 @@ def test_access_wall_detects_tieba_login_shell():
     assert module.looks_like_access_wall("百度贴吧", raw, "https://tieba.baidu.com/p/1") is True
 
 
+def test_access_wall_detects_wenku_trial_end():
+    raw = "试读已结束 加入VIP免费下载 继续阅读 文库VIP专享"
+    assert module.looks_like_access_wall("百度文库", raw, "https://wenku.baidu.com/view/abc.html") is True
+
+
 def test_with_rules_filters_empty_applied_rules():
     payload = {"applied_rules": ["quality_gating", "", None]}
     result = module.with_rules(payload, "", "domain_search_fallback")
@@ -1918,6 +1923,22 @@ def test_browser_bridge_detects_tieba_login_shell():
     )
     assert result["auth_state"] == "expired"
     assert result["auth_reason"] == "tieba_login_shell"
+
+
+def test_browser_bridge_detects_wenku_access_wall():
+    import importlib.util
+    path = "/Users/rico/.openclaw/extensions/openclaw-search-orchestrator/scripts/browser_session_bridge.py"
+    spec = importlib.util.spec_from_file_location("browser_bridge_module", path)
+    bridge = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(bridge)
+    result = bridge.detect_auth_state(
+        "https://wenku.baidu.com/view/abc.html",
+        "百度文库",
+        "试读已结束 加入VIP免费下载 继续阅读",
+    )
+    assert result["auth_state"] == "expired"
+    assert result["auth_reason"] == "wenku_access_wall"
 
 
 def test_generic_search_shell_extraction_from_sections():

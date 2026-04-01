@@ -1348,6 +1348,50 @@ def test_external_discovery_fallback_for_csdn_uses_article_suffixes():
     assert any(token in joined for token in ["文章", "博客", "实战"])
 
 
+def test_external_discovery_fallback_prefers_csdn_detail_urls():
+    original = module.search_engine
+
+    def fake_search_engine(engine, variant, site_focus):
+        return [
+            module.SearchResult(
+                "CSDN - 专业开发者社区",
+                "https://www.csdn.net/",
+                "开发者社区 博客 下载",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "CSDN 搜索",
+                "https://so.csdn.net/so/search?q=openclaw",
+                "搜索结果",
+                engine,
+                variant,
+                site_focus,
+            ),
+            module.SearchResult(
+                "OpenClaw 搜索优化实战 - CSDN博客",
+                "https://blog.csdn.net/example/article/details/123456",
+                "文章 教程 实战",
+                engine,
+                variant,
+                site_focus,
+            ),
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://blog.csdn.net/example/article/details/123456",
+            "openclaw 搜索优化",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["links"][0]["href"] == "https://blog.csdn.net/example/article/details/123456"
+
+
 def test_score_result_prefers_csdn_article_over_homepage():
     article = module.SearchResult(
         "OpenClaw 搜索优化实战 - CSDN博客",

@@ -3396,6 +3396,27 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
                 domain_counts[item_root] = domain_counts.get(item_root, 0) + 1
             if title_key:
                 seen_titles.add(title_key)
+        elif root in CONTENT_ROOTS:
+            combined = f"{item.title} {item.snippet} {item.url}"
+            item_root = root_domain(urllib.parse.urlparse(item.url).netloc.lower())
+            title_key = clean(item.title).lower()
+            detail_like = is_content_detail_url(item.url)
+            overlap = query_overlap_score(combined, query)
+            if title_key and title_key in seen_titles:
+                continue
+            if item_root == root and looks_like_search_or_shell_url(item.url) and not detail_like:
+                continue
+            if item_root == root and is_homepage_like(item.url) and not detail_like:
+                continue
+            if item_root == root and overlap < 1 and not detail_like:
+                continue
+            if item_root:
+                limit = 2 if item_root == root else 1
+                if domain_counts.get(item_root, 0) >= limit:
+                    continue
+                domain_counts[item_root] = domain_counts.get(item_root, 0) + 1
+            if title_key:
+                seen_titles.add(title_key)
         useful.append(item)
         if len(useful) >= 5:
             break
@@ -3406,6 +3427,15 @@ def extract_external_discovery_fallback(url: str, query: str) -> Dict | None:
             key=lambda item: (
                 -commerce_external_rank(item.url, item.title, item.snippet),
                 looks_like_search_or_shell_url(item.url),
+                -score_result(item, query),
+            )
+        )
+    elif root in CONTENT_ROOTS:
+        useful.sort(
+            key=lambda item: (
+                0 if is_content_detail_url(item.url) else 1,
+                looks_like_search_or_shell_url(item.url),
+                is_homepage_like(item.url),
                 -score_result(item, query),
             )
         )

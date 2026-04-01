@@ -187,6 +187,40 @@ def test_browser_session_fallback_for_low_signal_pages():
     assert "browser_session_fallback" in result["applied_rules"]
 
 
+def test_browser_session_fallback_for_csdn_logged_article():
+    original_fetch = module.fetch_with_reader_fallback
+    original_browser = module.browser_assisted_extract
+    original_flag = module.ENABLE_BROWSER_FALLBACK
+
+    def fake_fetch(url):
+        return "<html><head><title>404</title></head><body>页面不存在</body></html>", "direct"
+
+    def fake_browser(url, query):
+        return {
+            "url": url,
+            "fetch_mode": "browser_session",
+            "title": "OpenClaw 搜索优化实战 - CSDN博客",
+            "summary": ["命中已登录可见正文", "包含部署、优化、检索与回退策略"],
+            "sections": ["正文摘要"],
+            "links": [],
+            "quality": "high",
+            "applied_rules": ["browser_session_fallback"],
+        }
+
+    module.fetch_with_reader_fallback = fake_fetch
+    module.browser_assisted_extract = fake_browser
+    module.ENABLE_BROWSER_FALLBACK = True
+    try:
+        result = module.deep_extract("https://blog.csdn.net/example/article/details/1", "openclaw 搜索优化")
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.browser_assisted_extract = original_browser
+        module.ENABLE_BROWSER_FALLBACK = original_flag
+
+    assert result["fetch_mode"] == "browser_session"
+    assert "browser_session_fallback" in result["applied_rules"]
+
+
 def test_yt_dlp_adapter_for_content_page():
     original_run = module.subprocess.run
     original_available = module.yt_dlp_available

@@ -66,8 +66,12 @@ READER_FIRST_DOMAINS = {
     "www.aliexpress.com",
 }
 BROWSER_ASSIST_DOMAINS = {
+    "blog.csdn.net",
+    "csdn.net",
+    "www.csdn.net",
     "zhihu.com",
     "www.zhihu.com",
+    "tieba.baidu.com",
     "xiaohongshu.com",
     "www.xiaohongshu.com",
     "douyin.com",
@@ -91,10 +95,12 @@ BROWSER_ASSIST_DOMAINS = {
     "mobile.yangkeduo.com",
 }
 SITE_BROWSER_PREFERENCES = {
+    "csdn.net": ["safari"],
     "taobao.com": ["safari"],
     "tmall.com": ["safari"],
     "jd.com": ["safari"],
     "zhihu.com": ["safari"],
+    "baidu.com": ["safari"],
     "xiaohongshu.com": ["safari"],
     "douyin.com": ["safari"],
     "bilibili.com": ["safari", "chrome"],

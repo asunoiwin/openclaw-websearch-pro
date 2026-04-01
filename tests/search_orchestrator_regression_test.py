@@ -2218,6 +2218,10 @@ def test_commerce_external_sections_classify_source_types():
     assert "coupon" in levels
     assert "review" in levels
     assert "video" in levels
+    assert not any(
+        section["level"] == "result" and "值值值" in section["text"]
+        for section in sections
+    )
 
 
 def test_producthunt_domain_fallback_uses_producthunt_suffixes():

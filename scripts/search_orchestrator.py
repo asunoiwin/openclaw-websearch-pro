@@ -754,12 +754,15 @@ def extract_commerce_external_sections(items: List["SearchResult"]) -> List[Dict
     seen = set()
     for item in items:
         source_level = commerce_external_source_level(item.url, item.title, item.snippet)
+        source_title = clean(item.title)
         source_key = (source_level, clean(item.title))
         if source_key[1] and source_key not in seen:
             seen.add(source_key)
-            sections.append({"level": source_level, "text": clean(item.title)[:220]})
+            sections.append({"level": source_level, "text": source_title[:220]})
         line = format_commerce_line(item.title, item.snippet, item.url)
         for section in extract_commerce_search_card_sections([line]):
+            if section["level"] == "result" and source_level != "result" and source_title:
+                continue
             key = (section["level"], section["text"])
             if key in seen:
                 continue

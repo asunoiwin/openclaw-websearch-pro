@@ -1348,6 +1348,40 @@ def test_external_discovery_fallback_for_csdn_uses_article_suffixes():
     assert any(token in joined for token in ["文章", "博客", "实战"])
 
 
+def test_external_discovery_fallback_for_wenku_uses_material_suffixes():
+    original = module.search_engine
+
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return [
+            module.SearchResult(
+                "OpenClaw 安装资料 - 百度文库",
+                "https://wenku.baidu.com/view/abc.html",
+                "文库 资料 教程",
+                engine,
+                variant,
+                site_focus,
+            )
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://wenku.baidu.com/view/abc.html",
+            "openclaw 安装",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] == "external_discovery_fallback"
+    joined = " ".join(result["source_query"])
+    assert "百度" in joined or "文库" in joined
+    assert any(token in joined for token in ["文库", "资料", "帖子"])
+
+
 def test_external_discovery_fallback_prefers_csdn_detail_urls():
     original = module.search_engine
 

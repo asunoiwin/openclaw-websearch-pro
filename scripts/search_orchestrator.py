@@ -170,6 +170,7 @@ SITE_QUERY_SUFFIXES = {
     "yangkeduo": ["教程", "安装", "购买"],
 }
 EXTERNAL_DISCOVERY_EXTRA_SUFFIXES = {
+    "baidu.com": ["文库", "资料", "帖子", "教程"],
     "xiaohongshu.com": ["GitHub", "skill", "MCP", "教程", "自动化"],
     "douyin.com": ["GitHub", "skill", "MCP", "教程", "自动化"],
     "weibo.com": ["GitHub", "发布", "教程"],
@@ -237,6 +238,7 @@ EXTERNAL_DISCOVERY_BRANDS = {
     "douyin.com": "抖音 douyin",
     "weibo.com": "微博 weibo",
     "reddit.com": "reddit",
+    "baidu.com": "百度 文库 贴吧",
     "x.com": "x twitter",
     "quora.com": "quora",
     "medium.com": "medium",
@@ -270,6 +272,7 @@ SITE_FALLBACK_ORDER = {
     "douyin.com": ("external", "domain", "browser"),
     "weibo.com": ("external", "domain", "browser"),
     "x.com": ("external", "domain", "browser"),
+    "baidu.com": ("external", "domain", "browser"),
     "quora.com": ("external", "domain", "browser"),
     "medium.com": ("external", "domain", "browser"),
     "juejin.cn": ("external", "domain", "browser"),

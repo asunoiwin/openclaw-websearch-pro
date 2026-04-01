@@ -1314,6 +1314,40 @@ def test_external_discovery_fallback_for_quora_search_shell():
     assert "quora" in " ".join(result["source_query"]).lower()
 
 
+def test_external_discovery_fallback_for_csdn_uses_article_suffixes():
+    original = module.search_engine
+
+    seen_queries = []
+
+    def fake_search_engine(engine, variant, site_focus):
+        seen_queries.append(variant)
+        return [
+            module.SearchResult(
+                "OpenClaw 搜索优化实战 - CSDN博客",
+                "https://blog.csdn.net/example/article/details/1",
+                "文章 教程 实战",
+                engine,
+                variant,
+                site_focus,
+            )
+        ]
+
+    module.search_engine = fake_search_engine
+    try:
+        result = module.extract_external_discovery_fallback(
+            "https://blog.csdn.net/example/article/details/1",
+            "openclaw 搜索优化",
+        )
+    finally:
+        module.search_engine = original
+
+    assert result is not None
+    assert result["fetch_mode"] == "external_discovery_fallback"
+    joined = " ".join(result["source_query"])
+    assert "csdn" in joined.lower()
+    assert any(token in joined for token in ["文章", "博客", "实战"])
+
+
 def test_known_error_shell_detects_aliexpress_punish_page():
     raw = '''
     <script>

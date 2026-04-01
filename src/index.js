@@ -41,6 +41,34 @@ function readJson(file, fallback) {
   }
 }
 
+function normalizeToolArgs(args) {
+  if (!args) return {};
+  if (typeof args === 'string') {
+    try {
+      return JSON.parse(args);
+    } catch {
+      return { query: args };
+    }
+  }
+  if (typeof args === 'object') {
+    if (args.query || args.url || args.site || args.intent) return args;
+    const nestedKeys = ['arguments', 'input', 'payload'];
+    for (const key of nestedKeys) {
+      const value = args[key];
+      if (!value) continue;
+      if (typeof value === 'object') return value;
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value);
+        } catch {
+          return { query: value };
+        }
+      }
+    }
+  }
+  return {};
+}
+
 function execJson(args) {
   return new Promise((resolve, reject) => {
     execFile('python3', [SCRIPT, ...args], { timeout: 120000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
@@ -243,7 +271,8 @@ const plugin = {
         required: [],
       },
       execute: async (args = {}) => {
-        const sites = Array.isArray(args.sites) && args.sites.length ? args.sites : ['xiaohongshu', 'douyin', 'zhihu', 'csdn', 'tieba', 'wenku'];
+        const normalizedArgs = normalizeToolArgs(args);
+        const sites = Array.isArray(normalizedArgs.sites) && normalizedArgs.sites.length ? normalizedArgs.sites : ['xiaohongshu', 'douyin', 'zhihu', 'csdn', 'tieba', 'wenku'];
         const result = await attachAuthStatus(sites, (api.pluginConfig || {}).authPreviewFile || DEFAULT_AUTH_PREVIEW);
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -264,7 +293,8 @@ const plugin = {
         required: ['site'],
       },
       execute: async (args = {}) => {
-        const result = await execAuthJson(['login', JSON.stringify({ site: String(args.site || '') })]);
+        const normalizedArgs = normalizeToolArgs(args);
+        const result = await execAuthJson(['login', JSON.stringify({ site: String(normalizedArgs.site || '') })]);
         writeJson((api.pluginConfig || {}).authPreviewFile || DEFAULT_AUTH_PREVIEW, result);
         return {
           content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
@@ -286,9 +316,10 @@ const plugin = {
         required: ['url']
       },
       execute: async (args = {}) => {
-        const result = await execJson(['extract', JSON.stringify({ url: String(args.url || ''), query: String(args.query || '') })]);
+        const normalizedArgs = normalizeToolArgs(args);
+        const result = await execJson(['extract', JSON.stringify({ url: String(normalizedArgs.url || ''), query: String(normalizedArgs.query || normalizedArgs.q || '') })]);
         if (needsAuthReminder(result)) {
-          const site = authSiteFromUrl(result.url || args.url || '');
+          const site = authSiteFromUrl(result.url || normalizedArgs.url || '');
           if (site) {
             result.auth = await attachAuthStatus([site], (api.pluginConfig || {}).authPreviewFile || DEFAULT_AUTH_PREVIEW);
           }
@@ -316,7 +347,9 @@ const plugin = {
         required: ['query']
       },
       execute: async (args = {}) => {
-        if (!String(args.query || '').trim()) {
+        const normalizedArgs = normalizeToolArgs(args);
+        const query = String(normalizedArgs.query || normalizedArgs.q || normalizedArgs.question || normalizedArgs.text || '').trim();
+        if (!query) {
           return {
             content: [{ type: 'text', text: JSON.stringify({ error: 'empty_query' }, null, 2) }],
             details: { success: false, error: 'empty_query' },
@@ -324,11 +357,11 @@ const plugin = {
         }
         const cfg = api.pluginConfig || {};
         const payload = {
-          query: String(args.query || ''),
-          intent: String(args.intent || cfg.defaultIntent || 'auto'),
-          max_results: Number(args.max_results || cfg.maxInitialResults || 8),
-          max_deep_results: Number(args.max_deep_results || cfg.maxDeepResults || 5),
-          max_refine_rounds: Number(args.max_refine_rounds || cfg.maxRefineRounds || 2),
+          query,
+          intent: String(normalizedArgs.intent || cfg.defaultIntent || 'auto'),
+          max_results: Number(normalizedArgs.max_results || normalizedArgs.maxResults || cfg.maxInitialResults || 8),
+          max_deep_results: Number(normalizedArgs.max_deep_results || normalizedArgs.maxDeepResults || cfg.maxDeepResults || 5),
+          max_refine_rounds: Number(normalizedArgs.max_refine_rounds || normalizedArgs.maxRefineRounds || cfg.maxRefineRounds || 2),
           site_profiles: cfg.siteProfiles || DEFAULT_POLICY.siteProfiles,
         };
         const result = await execJson(['research', JSON.stringify(payload)]);
@@ -374,6 +407,7 @@ plugin.__private = {
   shouldSkipAgent,
   authSiteFromUrl,
   authSitesFromQuery,
+  normalizeToolArgs,
 };
 
 module.exports = plugin;

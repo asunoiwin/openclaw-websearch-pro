@@ -11,5 +11,17 @@ assert.equal(plugin.__private.authSiteFromUrl('https://wenku.baidu.com/view/abc.
 assert.equal(plugin.__private.authSiteFromUrl('https://tieba.baidu.com/p/123'), 'tieba');
 assert.equal(plugin.__private.authSiteFromUrl('https://www.zhihu.com/question/1'), 'zhihu');
 assert.deepEqual(plugin.__private.authSitesFromQuery('请检查知乎和小红书登录状态').sort(), ['xiaohongshu', 'zhihu']);
+assert.deepEqual(
+  plugin.__private.normalizeToolArgs({ arguments: { query: 'Claude source code leak git repository 2026', max_results: 8 } }),
+  { query: 'Claude source code leak git repository 2026', max_results: 8 }
+);
+assert.deepEqual(
+  plugin.__private.normalizeToolArgs({ payload: '{"query":"Claude source code leak git repository 2026","max_results":8}' }),
+  { query: 'Claude source code leak git repository 2026', max_results: 8 }
+);
+assert.deepEqual(
+  plugin.__private.normalizeToolArgs('{"query":"Claude source code leak git repository 2026"}'),
+  { query: 'Claude source code leak git repository 2026' }
+);
 
 console.log('search orchestrator smoke test passed');

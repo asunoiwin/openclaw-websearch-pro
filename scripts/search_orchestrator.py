@@ -55,6 +55,9 @@ READER_FIRST_DOMAINS = {
     "developer.aliyun.com",
     "51cto.com",
     "www.51cto.com",
+    "csdn.net",
+    "www.csdn.net",
+    "blog.csdn.net",
     "huxiu.com",
     "www.huxiu.com",
     "ebay.com",
@@ -214,6 +217,7 @@ EXTERNAL_DISCOVERY_BRANDS = {
     "cnblogs.com": "博客园 cnblogs",
     "infoq.cn": "infoq",
     "51cto.com": "51cto",
+    "csdn.net": "csdn",
     "tencent.com": "腾讯云 开发者",
     "aliyun.com": "阿里云 开发者",
     "sspai.com": "少数派 sspai",
@@ -245,6 +249,7 @@ SITE_FALLBACK_ORDER = {
     "cnblogs.com": ("external", "domain", "browser"),
     "infoq.cn": ("external", "domain", "browser"),
     "51cto.com": ("external", "domain", "browser"),
+    "csdn.net": ("external", "domain", "browser"),
     "tencent.com": ("external", "domain", "browser"),
     "aliyun.com": ("external", "domain", "browser"),
     "sspai.com": ("external", "domain", "browser"),
@@ -494,12 +499,16 @@ class SearchResult:
 
 
 def with_rules(payload: Dict, *rules: str) -> Dict:
-    merged = list(payload.get("applied_rules") or [])
+    merged = [rule for rule in list(payload.get("applied_rules") or []) if rule]
     for rule in rules:
         if rule and rule not in merged:
             merged.append(rule)
     payload["applied_rules"] = merged
     return payload
+
+
+def compact_rules(*rules: str) -> List[str]:
+    return [rule for rule in dict.fromkeys(rules) if rule]
 
 
 def clean(text: str) -> str:
@@ -1256,6 +1265,45 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
             if any(token in combined for token in ("京东验证", "请完成验证", "安全验证", "验证中心", "verify")):
                 return True
         if "item.jd.com" in parsed.netloc.lower() and any(token in combined for token in ("京东验证", "请完成验证", "安全验证")):
+            return True
+    if lowered_title in {"404", "404 not found", "403", "403 forbidden", "page not found"}:
+        return True
+    if any(token in lowered_raw for token in ("404 not found", "403 forbidden", "page not found", "页面不存在", "您访问的页面不存在")):
+        return True
+    return False
+
+
+def looks_like_access_wall(title: str, text: str, url: str) -> bool:
+    sample = f"{clean(title)} {clean(text)[:2500]}".lower()
+    domain = root_domain(urllib.parse.urlparse(url).netloc.lower())
+    generic_markers = [
+        "登录后可",
+        "登录后查看",
+        "登录后继续",
+        "展开阅读全文",
+        "阅读全文",
+        "剩余",
+        "未读",
+        "加入会员",
+        "会员专享",
+        "付费阅读",
+        "付费专栏",
+        "关注后可见",
+        "关注博主",
+        "关注作者",
+        "盐选专栏",
+        "盐选会员",
+        "app内查看",
+    ]
+    if sum(1 for marker in generic_markers if marker in sample) >= 2:
+        return True
+    domain_markers = {
+        "csdn.net": ["vip文章", "付费专栏", "登录后您可以享受以下权益", "专栏目录", "登录后复制"],
+        "zhihu.com": ["盐选", "继续查看回答", "登录后你可以不限量看优质内容", "打开知乎app", "阅读全文"],
+        "baidu.com": ["打开百度app", "app内查看", "下载贴吧app", "贴吧app"],
+    }
+    for root, markers in domain_markers.items():
+        if domain == root and any(marker.lower() in sample for marker in markers):
             return True
     return False
 
@@ -3155,7 +3203,7 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
                 "links": links[:10],
                 "quality": "high" if len(summary) >= 2 else "medium",
                 "source_query": variant if len(variants) == 1 else variants[:4],
-                "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "followup_refinement", "root_domain_relaxation" if root and root != domain else ""])),
+                "applied_rules": compact_rules("quality_gating", "domain_search_fallback", "followup_refinement", "root_domain_relaxation" if root and root != domain else ""),
             }
     return {
         "url": url,
@@ -3171,7 +3219,7 @@ def extract_domain_search_fallback(url: str, query: str, follow_depth: bool = Tr
         "links": [{"text": item.title, "href": item.url} for item in useful],
         "quality": "medium",
         "source_query": variant if len(variants) == 1 else variants[:4],
-        "applied_rules": list(dict.fromkeys(["quality_gating", "domain_search_fallback", "root_domain_relaxation" if root and root != domain else ""])),
+        "applied_rules": compact_rules("quality_gating", "domain_search_fallback", "root_domain_relaxation" if root and root != domain else ""),
     }
 
 
@@ -3685,6 +3733,13 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         if fallback_result:
             return fallback_result
         return with_rules({"url": url, "fetch_mode": mode, "title": "", "summary": [], "sections": [], "links": [], "quality": "low"}, "unavailable")
+    if looks_like_known_error_shell("", raw, url) or looks_like_access_wall("", raw, url):
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+        if fallback_result:
+            return with_rules(
+                fallback_result,
+                "known_error_shell" if looks_like_known_error_shell("", raw, url) else "access_wall",
+            )
     site_special = (
         extract_taobao_special(url, raw, query)
         or extract_pinduoduo_special(url, raw, query)
@@ -3710,6 +3765,13 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
             return fallback_result
     if "<html" not in raw.lower():
         reader_title, normalized = normalize_reader_text(raw[:MAX_TEXT]) if mode == "reader" else ("", clean(raw[:MAX_TEXT]))
+        if looks_like_known_error_shell(reader_title, normalized, url) or looks_like_access_wall(reader_title, normalized, url):
+            fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+            if fallback_result:
+                return with_rules(
+                    fallback_result,
+                    "known_error_shell" if looks_like_known_error_shell(reader_title, normalized, url) else "access_wall",
+                )
         summary = summarize_text(normalized, query)
         if (not summary or is_low_signal_text(normalized)) and DISTILL.exists():
             try:
@@ -3737,6 +3799,10 @@ def deep_extract(url: str, query: str, allow_fallback: bool = True) -> Dict:
         fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
         if fallback_result:
             return with_rules(fallback_result, "known_error_shell", *adapter_blocker_rules(url))
+    if looks_like_access_wall(parser.title, raw, url):
+        fallback_result = run_fallbacks(url, query, allow_fallback=allow_fallback)
+        if fallback_result:
+            return with_rules(fallback_result, "access_wall", *adapter_blocker_rules(url))
     parser_search = extract_parser_search_results(url, parser, query)
     if parser_search and (
         looks_like_search_shell(parser.title, parser.sections, parser.links)

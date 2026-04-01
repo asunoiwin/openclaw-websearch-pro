@@ -1290,6 +1290,22 @@ def test_known_error_shell_detects_aliexpress_punish_page():
     assert module.looks_like_known_error_shell("", raw, "https://www.aliexpress.com") is True
 
 
+def test_known_error_shell_detects_csdn_404_page():
+    raw = "<html><head><title>404</title></head><body>页面不存在，返回首页</body></html>"
+    assert module.looks_like_known_error_shell("404", raw, "https://blog.csdn.net/foo/article/details/1") is True
+
+
+def test_access_wall_detects_zhihu_paid_or_expand_gate():
+    raw = "<html><head><title>知乎</title></head><body>展开阅读全文 登录后你可以不限量看优质内容 盐选专栏</body></html>"
+    assert module.looks_like_access_wall("知乎", raw, "https://www.zhihu.com/question/1") is True
+
+
+def test_with_rules_filters_empty_applied_rules():
+    payload = {"applied_rules": ["quality_gating", "", None]}
+    result = module.with_rules(payload, "", "domain_search_fallback")
+    assert result["applied_rules"] == ["quality_gating", "domain_search_fallback"]
+
+
 def test_commerce_homepage_generic_reader_forces_fallback():
     original_fetch = module.fetch_with_reader_fallback
     original_fallbacks = module.run_fallbacks
@@ -1343,6 +1359,59 @@ def test_commerce_homepage_skip_bypasses_fetch():
 
     assert result["fetch_mode"] == "domain_search_fallback"
     assert "commerce_homepage_skip" in result.get("applied_rules", [])
+
+
+def test_access_wall_reader_forces_fallback():
+    original_fetch = module.fetch_with_reader_fallback
+    original_fallbacks = module.run_fallbacks
+
+    module.fetch_with_reader_fallback = lambda url: (
+        "<html><head><title>知乎</title></head><body>展开阅读全文 登录后你可以不限量看优质内容 盐选专栏</body></html>",
+        "reader",
+    )
+    module.run_fallbacks = lambda url, query, allow_fallback=True, follow_depth=True: {
+        "url": url,
+        "fetch_mode": "domain_search_fallback",
+        "title": "www.zhihu.com",
+        "summary": ["向量检索 - 知乎"],
+        "sections": [{"level": "results", "text": "向量检索 - 知乎"}],
+        "links": [{"text": "向量检索 - 知乎", "href": "https://www.zhihu.com/question/123"}],
+        "quality": "medium",
+        "applied_rules": ["quality_gating", "domain_search_fallback"],
+    }
+    try:
+        result = module.deep_extract("https://www.zhihu.com/question/123", "向量检索 重排")
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.run_fallbacks = original_fallbacks
+
+    assert result["fetch_mode"] == "domain_search_fallback"
+    assert "access_wall" in result.get("applied_rules", [])
+
+
+def test_error_reader_title_forces_fallback():
+    original_fetch = module.fetch_with_reader_fallback
+    original_fallbacks = module.run_fallbacks
+
+    module.fetch_with_reader_fallback = lambda url: ("404\n页面不存在", "reader")
+    module.run_fallbacks = lambda url, query, allow_fallback=True, follow_depth=True: {
+        "url": url,
+        "fetch_mode": "external_discovery_fallback",
+        "title": "csdn.net",
+        "summary": ["OpenClaw 搜索优化 - CSDN"],
+        "sections": [{"level": "results", "text": "OpenClaw 搜索优化 - CSDN"}],
+        "links": [{"text": "OpenClaw 搜索优化 - CSDN", "href": "https://blog.csdn.net/example"}],
+        "quality": "medium",
+        "applied_rules": ["quality_gating", "external_discovery_fallback"],
+    }
+    try:
+        result = module.deep_extract("https://blog.csdn.net/example/article/details/1", "openclaw 搜索优化")
+    finally:
+        module.fetch_with_reader_fallback = original_fetch
+        module.run_fallbacks = original_fallbacks
+
+    assert result["fetch_mode"] == "external_discovery_fallback"
+    assert "known_error_shell" in result.get("applied_rules", [])
 
 
 def test_pinduoduo_item_meta_includes_price_sales_and_shop_signals():

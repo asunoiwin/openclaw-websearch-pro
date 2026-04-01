@@ -1329,9 +1329,19 @@ def test_known_error_shell_detects_csdn_404_page():
     assert module.looks_like_known_error_shell("404", raw, "https://blog.csdn.net/foo/article/details/1") is True
 
 
+def test_known_error_shell_detects_zhihu_wasteland_page():
+    raw = "<html><head><title>你似乎来到了没有知识存在的荒原 - 知乎</title></head><body>你似乎来到了没有知识存在的荒原</body></html>"
+    assert module.looks_like_known_error_shell("你似乎来到了没有知识存在的荒原 - 知乎", raw, "https://www.zhihu.com/question/1") is True
+
+
 def test_access_wall_detects_zhihu_paid_or_expand_gate():
     raw = "<html><head><title>知乎</title></head><body>展开阅读全文 登录后你可以不限量看优质内容 盐选专栏</body></html>"
     assert module.looks_like_access_wall("知乎", raw, "https://www.zhihu.com/question/1") is True
+
+
+def test_access_wall_detects_tieba_login_shell():
+    raw = "发贴 登录 首页 我的 下载贴吧app"
+    assert module.looks_like_access_wall("百度贴吧", raw, "https://tieba.baidu.com/p/1") is True
 
 
 def test_with_rules_filters_empty_applied_rules():

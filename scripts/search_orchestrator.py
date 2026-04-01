@@ -1272,6 +1272,12 @@ def looks_like_known_error_shell(title: str, raw: str, url: str) -> bool:
                 return True
         if "item.jd.com" in parsed.netloc.lower() and any(token in combined for token in ("京东验证", "请完成验证", "安全验证")):
             return True
+    if domain == "zhihu.com":
+        if "没有知识存在的荒原" in title or "没有知识存在的荒原" in raw[:3000]:
+            return True
+    if domain == "csdn.net":
+        if "内容不存在" in raw[:3000] and "离你而去了" in raw[:3000]:
+            return True
     if lowered_title in {"404", "404 not found", "403", "403 forbidden", "page not found"}:
         return True
     if any(token in lowered_raw for token in ("404 not found", "403 forbidden", "page not found", "页面不存在", "您访问的页面不存在")):
@@ -1306,7 +1312,7 @@ def looks_like_access_wall(title: str, text: str, url: str) -> bool:
     domain_markers = {
         "csdn.net": ["vip文章", "付费专栏", "登录后您可以享受以下权益", "专栏目录", "登录后复制"],
         "zhihu.com": ["盐选", "继续查看回答", "登录后你可以不限量看优质内容", "打开知乎app", "阅读全文"],
-        "baidu.com": ["打开百度app", "app内查看", "下载贴吧app", "贴吧app"],
+        "baidu.com": ["打开百度app", "app内查看", "下载贴吧app", "贴吧app", "发贴 登录 首页 我的"],
     }
     for root, markers in domain_markers.items():
         if domain == root and any(marker.lower() in sample for marker in markers):
@@ -2294,6 +2300,8 @@ def browser_assisted_extract(url: str, query: str) -> Dict | None:
         return None
     title = clean(payload.get("title", ""))
     if looks_like_login_shell(title, text):
+        return None
+    if looks_like_known_error_shell(title, text, payload_url or url) or looks_like_access_wall(title, text, payload_url or url):
         return None
     site = payload.get("site") or infer_site_from_url(payload_url or url)
     if not has_site_specific_result_signal(site, text, query):

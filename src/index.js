@@ -217,7 +217,7 @@ function buildGuidance(pluginConfig, prompt) {
     : inferIntent(prompt);
   return [
     'Search orchestration guidance:',
-    '- 当前任务涉及外部信息时，先使用 search_orchestrator_research 建立证据集，再回答。',
+    '- 当前任务涉及外部信息时，先使用 websearch_pro_research 建立证据集，再回答。',
     '- 先跑多引擎搜索，再对高价值结果做深度提取；若结果差，自动扩展查询再搜索，不要停在第一层搜索结果。',
     '- 对 GitHub、ClawHub、Google、Baidu、Reddit、小红书、抖音、知乎等来源，优先保留链接、证据、时间和二次搜索线索。',
     `- 建议意图：${intent}`,
@@ -244,8 +244,8 @@ const plugin = {
     api.logger.info?.('[openclaw-websearch-pro] plugin registered');
 
     api.registerTool({
-      name: 'search_orchestrator_status',
-      label: 'Search Orchestrator Status',
+      name: 'websearch_pro_status',
+      label: 'WebSearch Pro Status',
       description: 'Inspect the latest search orchestration preview.',
       parameters: { type: 'object', properties: {}, required: [] },
       execute: async () => {
@@ -304,8 +304,8 @@ const plugin = {
     });
 
     api.registerTool({
-      name: 'search_orchestrator_extract',
-      label: 'Search Orchestrator Extract',
+      name: 'websearch_pro_extract',
+      label: 'WebSearch Pro Extract',
       description: 'Deep extract a specific page, including fallback for JS-heavy pages.',
       parameters: {
         type: 'object',
@@ -332,8 +332,8 @@ const plugin = {
     });
 
     api.registerTool({
-      name: 'search_orchestrator_research',
-      label: 'Search Orchestrator Research',
+      name: 'websearch_pro_research',
+      label: 'WebSearch Pro Research',
       description: 'Run unified multi-engine search, deep extraction, refinement, and evidence ranking.',
       parameters: {
         type: 'object',

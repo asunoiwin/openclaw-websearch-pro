@@ -93,11 +93,11 @@
 
 ## 工具
 
-### `search_orchestrator_extract`
+### `websearch_pro_extract`
 
 深提取单个 URL，并在需要时附带登录状态。
 
-### `search_orchestrator_research`
+### `websearch_pro_research`
 
 多引擎搜索 + 深提取 + 登录敏感站点状态提示。
 

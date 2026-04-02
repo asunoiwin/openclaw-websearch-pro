@@ -20,9 +20,9 @@ OpenClaw WebSearch Pro is an OpenClaw extension for multi-engine web search, dee
 
 ## Registered Tools
 
-- `search_orchestrator_status`
-- `search_orchestrator_extract`
-- `search_orchestrator_research`
+- `websearch_pro_status`
+- `websearch_pro_extract`
+- `websearch_pro_research`
 - `websearch_pro_auth_status`
 - `websearch_pro_login_assist`
 
@@ -73,9 +73,9 @@ The extension now has explicit auth monitoring.
 - `websearch_pro_login_assist`
   - `xiaohongshu`: creates a QR PNG and returns the image path
   - browser-login sites: opens the login page directly in Safari
-- `search_orchestrator_extract`
+- `websearch_pro_extract`
   - automatically attaches auth status for supported sites when extraction hits login-sensitive paths
-- `search_orchestrator_research`
+- `websearch_pro_research`
   - attaches auth status for supported sites found in top results or query intent
 
 The QR workflow is file-based by design. The tool returns an absolute PNG path so desktop chat surfaces can render or forward it directly.

@@ -93,11 +93,11 @@ Core output:
 
 ## Tools
 
-### `search_orchestrator_extract`
+### `websearch_pro_extract`
 
 Deep extract a single URL and attach auth status when relevant.
 
-### `search_orchestrator_research`
+### `websearch_pro_research`
 
 Run multi-engine search plus deep extraction and auth-aware site hints.
 

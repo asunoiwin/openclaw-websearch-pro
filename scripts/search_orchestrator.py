@@ -39,11 +39,16 @@ MEDIACRAWLER_OUTPUT_BASE = Path(os.environ.get("OPENCLAW_MEDIACRAWLER_OUTPUT_BAS
 MEDIACRAWLER_TIMEOUT_SECONDS = int(os.environ.get("OPENCLAW_MEDIACRAWLER_TIMEOUT_SECONDS", "45"))
 YT_DLP = ["python3", "-m", "yt_dlp"]
 GALLERY_DL = ["python3", "-m", "gallery_dl"]
+# 已知 Jina Reader / 直连必然超时或 403 的域名，直接跳到 fallback，不浪费 Jina 超时时间
+FAST_FAIL_DOMAINS = {
+    "zhihu.com",
+    "www.zhihu.com",
+}
+
 READER_FIRST_DOMAINS = {
     "github.com",
     "www.github.com",
-    "zhihu.com",
-    "www.zhihu.com",
+    # zhihu.com moved to FAST_FAIL_DOMAINS to avoid 8-12s Jina timeout per URL
     "xiaohongshu.com",
     "www.xiaohongshu.com",
     "douyin.com",
@@ -216,6 +221,51 @@ CONTENT_ROOTS = {
     "ifanr.com",
     "douban.com",
 }
+OFFICIAL_DOC_HINTS = (
+    "docs",
+    "doc",
+    "documentation",
+    "wiki",
+    "guide",
+    "manual",
+    "pricing",
+    "price",
+    "edition",
+    "release",
+    "changelog",
+    "版本",
+    "定价",
+    "价格",
+    "文档",
+    "说明",
+)
+LOW_TRUST_COMPARE_ROOTS = {
+    "zhihu.com",
+    "csdn.net",
+    "baidu.com",
+    "wenku.baidu.com",
+}
+HIGH_TRUST_COMPARE_ROOTS = {
+    "github.com",
+    "gitlab.com",
+    "producthunt.com",
+    "readthedocs.io",
+    "gitbook.io",
+}
+
+
+def profile_site_terms(site_profiles: Dict[str, List[str]], profile_name: str) -> List[str]:
+    values = site_profiles.get(profile_name, []) if isinstance(site_profiles, dict) else []
+    terms: List[str] = []
+    for value in values:
+        raw = clean(value).lower()
+        if not raw:
+            continue
+        if raw.startswith("docs."):
+            terms.append("site:docs.*")
+            continue
+        terms.append(raw)
+    return terms
 COMMERCE_ROOTS = {
     "taobao.com",
     "tmall.com",
@@ -1284,6 +1334,15 @@ def extract_meta_refresh_target(raw: str, base_url: str) -> str:
 
 def fetch_with_reader_fallback(url: str) -> Tuple[str, str]:
     domain = urllib.parse.urlparse(url).netloc.lower()
+    root = root_domain(domain)
+    # Known domains where Jina Reader always times out or returns useless content:
+    # skip Jina entirely to avoid 8-12s waste per URL
+    if root in FAST_FAIL_DOMAINS or domain in FAST_FAIL_DOMAINS:
+        try:
+            raw = http_get(url, timeout=5)
+            return raw, "direct"
+        except Exception:
+            return "", "unavailable"
     prefer_reader = domain in READER_FIRST_DOMAINS
     reader_timeout = 8 if prefer_reader else 12
     direct_timeout = 8 if prefer_reader else 12
@@ -3578,12 +3637,30 @@ def build_variants(query: str, intent: str, site_profiles: Dict[str, List[str]])
     base = clean(query)
     variants: List[Tuple[str, str]] = [(base, "general")]
     lowered = base.lower()
+    if intent == "product_compare":
+      variants.extend([
+          (f"{base} 官网", "official"),
+          (f"{base} 文档", "docs"),
+          (f"{base} 定价", "pricing"),
+          (f"{base} 版本 区别", "edition"),
+          (f"{base} site:github.com", "github"),
+      ])
+      for term in profile_site_terms(site_profiles, "product_compare")[:6]:
+          if term in {"docs", "wiki", "pricing", "price"}:
+              variants.append((f"{base} {term}", term))
+          elif term == "site:docs.*":
+              variants.append((f"{base} docs", "docs"))
+          elif "." in term:
+              variants.append((f"{base} site:{term}", term))
     if intent == "plugin_discovery" or any(k in lowered for k in ["github", "clawhub", "plugin", "skill", "安装"]):
       variants.extend([
           (f"{base} site:github.com", "github"),
           (f"{base} site:clawhub.com", "clawhub"),
       ])
-    if intent == "social_research" or any(k in lowered for k in ["小红书", "抖音", "知乎", "bilibili", "微博"]):
+    if intent == "social_research":
+      # Only expand to other social media sites when social_research is explicitly declared.
+      # Avoids cross-polluting normal queries (e.g. "知乎文章怎么打开") with unrelated
+      # social platforms like xiaohongshu or douyin.
       variants.extend([
           (f"{base} site:xiaohongshu.com", "xiaohongshu"),
           (f"{base} site:douyin.com", "douyin"),
@@ -3688,6 +3765,8 @@ def search_engine(engine: str, variant: str, site_focus: str) -> List[SearchResu
 
 def engines_for_intent(intent: str) -> Tuple[str, ...]:
     normalized = clean(intent).lower()
+    if normalized == "product_compare":
+        return ("bing", "ddg", "google")
     if normalized == "plugin_discovery":
         return ("bing", "ddg")
     if normalized == "social_research":
@@ -3701,6 +3780,7 @@ def engines_for_intent(intent: str) -> Tuple[str, ...]:
 
 def score_result(item: SearchResult, query: str) -> float:
     hay = f"{item.title} {item.snippet} {item.url}".lower()
+    lowered_query = query.lower()
     tokens = re.findall(r"[a-z0-9][a-z0-9._/-]{1,}|[\u4e00-\u9fff]{2,}", query.lower())
     overlap = sum(1 for token in dict.fromkeys(tokens) if token in hay)
     score = overlap * 10
@@ -3723,6 +3803,19 @@ def score_result(item: SearchResult, query: str) -> float:
             score += 7
         if looks_like_search_or_shell_url(item.url) and not is_content_detail_url(item.url):
             score -= 6
+    if any(hint in hay for hint in OFFICIAL_DOC_HINTS):
+        score += 6
+    if "site:github.com" in item.query_variant or item.site_focus in {"github", "official", "docs", "pricing", "edition"}:
+        score += 4
+    compare_like = any(token in lowered_query for token in ["免费版", "社区版", "收费版", "专业版", "企业版", "版本区别", "版本对比", "价格", "定价", "edition", "pricing", "compare"])
+    if compare_like and root in LOW_TRUST_COMPARE_ROOTS:
+        score -= 18
+    if compare_like and root not in LOW_TRUST_COMPARE_ROOTS and any(hint in hay for hint in OFFICIAL_DOC_HINTS):
+        score += 8
+    if compare_like and root in {"github.com", "gitlab.com", "producthunt.com"}:
+        score += 8
+    if compare_like and root in COMMERCE_ROOTS:
+        score -= 4
         if is_homepage_like(item.url) and not is_content_detail_url(item.url):
             score -= 5
     if root in COMMERCE_ROOTS:
@@ -4167,6 +4260,21 @@ def research(payload: Dict) -> Dict:
     run_round(variants, 1)
     collected.sort(key=lambda item: item.score, reverse=True)
 
+    if clean(intent).lower() == "product_compare":
+        roots = {root_domain(urllib.parse.urlparse(item.url).netloc.lower()) for item in collected[:10]}
+        has_high_value = any(root in {"github.com", "gitlab.com", "producthunt.com"} for root in roots) or any(
+            any(hint in f"{item.title} {item.snippet} {item.url}".lower() for hint in OFFICIAL_DOC_HINTS)
+            for item in collected[:10]
+        )
+        if not has_high_value:
+            direct_followups = [
+                (f"{query} site:github.com", "github"),
+                (f"{query} pricing", "pricing"),
+                (f"{query} docs", "docs"),
+            ]
+            run_round(direct_followups, 1)
+            collected.sort(key=lambda item: item.score, reverse=True)
+
     refine_round = 1
     while refine_round <= max_refine_rounds:
         top_score = collected[0].score if collected else 0
@@ -4179,11 +4287,35 @@ def research(payload: Dict) -> Dict:
         collected.sort(key=lambda item: item.score, reverse=True)
         refine_round += 1
 
+    if clean(intent).lower() == "product_compare":
+        has_high_value = any(
+            root_domain(urllib.parse.urlparse(item.url).netloc.lower()) in HIGH_TRUST_COMPARE_ROOTS
+            or any(hint in f"{item.title} {item.snippet} {item.url}".lower() for hint in OFFICIAL_DOC_HINTS)
+            for item in collected[:12]
+        )
+        if has_high_value:
+            prioritized = []
+            deferred = []
+            for item in collected:
+                root = root_domain(urllib.parse.urlparse(item.url).netloc.lower())
+                if root in LOW_TRUST_COMPARE_ROOTS:
+                    deferred.append(item)
+                else:
+                    prioritized.append(item)
+            collected = prioritized + deferred
+
     top = collected[:max_results]
 
     def build_deep(items: List[SearchResult]) -> List[Dict]:
         deep_items = []
-        for candidate in items[:max_deep_results]:
+        limit = max_deep_results
+        if clean(intent).lower() == "product_compare":
+            limit = min(limit, 3)
+        for candidate in items[:limit]:
+            candidate_root = root_domain(urllib.parse.urlparse(candidate.url).netloc.lower())
+            if clean(intent).lower() == "product_compare" and candidate_root in LOW_TRUST_COMPARE_ROOTS:
+                if any(root_domain(urllib.parse.urlparse(other.url).netloc.lower()) not in LOW_TRUST_COMPARE_ROOTS for other in items[:limit]):
+                    continue
             extraction = deep_extract(candidate.url, query)
             deep_items.append({
                 "title": candidate.title,
@@ -4209,6 +4341,19 @@ def research(payload: Dict) -> Dict:
             coverage = coverage_signals(deep)
 
     quality = "high" if deep and coverage["high"] >= 2 else "medium" if deep and coverage["useful"] else "low"
+    if clean(intent).lower() == "product_compare":
+        filtered = []
+        high_conf_present = any(
+            root_domain(urllib.parse.urlparse(item["url"]).netloc.lower()) not in LOW_TRUST_COMPARE_ROOTS
+            for item in deep
+        )
+        for item in deep:
+            root = root_domain(urllib.parse.urlparse(item["url"]).netloc.lower())
+            if high_conf_present and root in LOW_TRUST_COMPARE_ROOTS:
+                continue
+            filtered.append(item)
+        if filtered:
+            deep = filtered
     return {
         "query": query,
         "intent": intent,

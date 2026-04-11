@@ -49,14 +49,14 @@ SITE_CONFIG: Dict[str, Dict] = {
         "mode": "browser",
         "browser": "safari",
         "login_url": "https://www.zhihu.com/signin?next=%2F",
-        "status_url": "https://www.zhihu.com/search?type=content&q=openclaw",
+        "status_url": "https://www.zhihu.com/",
     },
     "csdn": {
         "aliases": ["博客园csdn"],
         "mode": "browser",
         "browser": "safari",
         "login_url": "https://passport.csdn.net/login?code=public",
-        "status_url": "https://blog.csdn.net/",
+        "status_url": "https://www.csdn.net/",
     },
     "tieba": {
         "aliases": ["贴吧", "百度贴吧"],

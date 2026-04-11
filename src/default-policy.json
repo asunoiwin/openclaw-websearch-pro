@@ -86,6 +86,17 @@
       "github.com",
       "docs.openclaw.ai",
       "npmjs.com"
+    ],
+    "product_compare": [
+      "github.com",
+      "docs.github.com",
+      "gitbook.io",
+      "readthedocs.io",
+      "docs.",
+      "wiki",
+      "pricing",
+      "price",
+      "docs"
     ]
   }
 }
